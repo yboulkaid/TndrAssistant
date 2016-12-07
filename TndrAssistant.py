@@ -97,7 +97,7 @@ elif sys.argv[1] == "-dl":
 		cur.execute("SELECT liked FROM Users WHERE user_id =\"" + sys.argv[2+i] + "\"")
 		liked = cur.fetchone()
 		if liked[0] == 3:
-			cur.execute("UPDATE Users SET liked = 4 WHERE user_id = \"" + sys.argv[2+i] + "\"")
+			cur.execute("UPDATE Users SET liked = -1 WHERE user_id = \"" + sys.argv[2+i] + "\"")
 			conn.commit()
 		else:
 			cur.execute("UPDATE Users SET liked = 0 WHERE user_id = \"" + sys.argv[2+i] + "\"")
@@ -130,7 +130,7 @@ elif sys.argv[1] == "-p":
 		for i in range(len(tempList)):
 			idList.append(tempList[i][0])
 	elif sys.argv[2] == "-m":
-		cur.execute("SELECT user_id, MAX(record_time) as rdate FROM Users WHERE match_candidate = 1 GROUP BY user_id ORDER BY rdate DESC")
+		cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM Users WHERE match_candidate = 1 GROUP BY user_id ORDER BY rdate DESC, liked DESC")
 		tempList = cur.fetchall()
 		idList = []
 		for i in range(len(tempList)):
@@ -174,7 +174,7 @@ elif sys.argv[1] == "-p":
 			label = label + "<br><input type=\"radio\" name=\"" + id + "\" value=\"NULL\">NULL<input type=\"radio\" name=\"" + id + "\" value=\"0\">dislike<input type=\"radio\" name=\"" + id + "\" value=\"1\">LIKE<input type=\"radio\" name=\"" + id + "\" value=\"2\">SUPERLIKE"
 			photosFile.write((label+"<br>").encode("utf8"))
 			for photo in user["results"]["photos"]:
-				photosFile.write("<img width=\"200\" src=\"" + photo["url"] + "\">")
+				photosFile.write("<a href=\"" + photo["url"] + "\"><img width=\"200\" src=\"" + photo["url"] + "\"></a>")
 			photosFile.write("<br>"+(user["results"]["bio"]+"<p>").encode("utf8"))
 		except Exception as e:
 			print(e, id)
