@@ -1,4 +1,4 @@
-import sys, os, pprint, pymysql, pynder, time
+import sys, os, pprint, pymysql, pynder, time, robobrowser, pickle, re
 from datetime import datetime
 from tabulate import tabulate
 reload(sys)  
@@ -6,11 +6,11 @@ sys.setdefaultencoding('utf8')
 
 from config import *
 currentFolder = os.path.dirname(os.path.realpath(sys.argv[0]))
-if not PHPFolder:
-	PHPFolder = currentFolder
+if not PHP_FOLDER:
+	PHP_FOLDER = currentFolder
 
 currentTimestamp = datetime.now()
-conn = pymysql.connect(host="127.0.0.1", port=3306, user=dbUser, passwd=dbPassword, db=dbName)
+conn = pymysql.connect(host="127.0.0.1", port=3306, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME)
 cur = conn.cursor()
 
 def open_browser(url):
@@ -18,6 +18,36 @@ def open_browser(url):
 		os.system("open /Applications/Safari.app " + url)
 	else:
 		os.startfile(url)
+
+def get_facebook_token(email, password):
+	MOBILE_USER_AGENT = "Mozilla/5.0 (Linux; U; en-gb; KFTHWI Build/JDQ39) AppleWebKit/535.19 (KHTML, like Gecko) Silk/3.16 Safari/535.19"
+	FB_AUTH_URL = "https://www.facebook.com/v2.6/dialog/oauth?redirect_uri=fb464891386855067%3A%2F%2Fauthorize%2F&display=touch&state=%7B%22challenge%22%3A%22IUUkEUqIGud332lfu%252BMJhxL4Wlc%253D%22%2C%220_auth_logger_id%22%3A%2230F06532-A1B9-4B10-BB28-B29956C71AB1%22%2C%22com.facebook.sdk_client_state%22%3Atrue%2C%223_method%22%3A%22sfvc_auth%22%7D&scope=user_birthday%2Cuser_photos%2Cuser_education_history%2Cemail%2Cuser_relationship_details%2Cuser_friends%2Cuser_work_history%2Cuser_likes&response_type=token%2Csigned_request&default_audience=friends&return_scopes=true&auth_type=rerequest&client_id=464891386855067&ret=login&sdk=ios&logger_id=30F06532-A1B9-4B10-BB28-B29956C71AB1&ext=1470840777&hash=AeZqkIcf-NEW6vBd"
+	
+	rb = robobrowser.RoboBrowser(user_agent=MOBILE_USER_AGENT, parser="html5lib")
+	
+	try:
+		# READ FACEBOOK COOKIES
+		current_folder = os.path.dirname(os.path.realpath(sys.argv[0]))
+		cookies_file = open(current_folder + "/cookies.pckl", "rb")
+		cookies = pickle.load(cookies_file)
+		rb.session.cookies = cookies
+		cookies_file.close()
+		rb.open(FB_AUTH_URL)
+	except IOError:
+		# FACEBOOK LOGIN
+		rb.open(FB_AUTH_URL)
+		f_login = rb.get_form()
+		f_login["pass"] = password
+		f_login["email"] = email
+		rb.submit_form(f_login)
+	
+	# GET TOKEN
+	f_auth = rb.get_form()
+	rb.submit_form(f_auth, submit=f_auth.submit_fields['__CONFIRM__'])
+	access_token = re.search(r"access_token=([\w\d]+)", rb.response.content.decode()).groups()[0]
+		
+	return access_token
+
 
 
 # OPEN SESSION
@@ -29,13 +59,11 @@ try:
 	session = pynder.Session(FBtoken)
 except Exception as e:
 	# UPDATE TOKEN
-	open_browser("https://www.facebook.com/v2.6/dialog/oauth?redirect_uri=fb464891386855067%3A%2F%2Fauthorize%2F\&display=touch\&state=%7B%22challenge%22%3A%22IUUkEUqIGud332lfu%252BMJhxL4Wlc%253D%22%2C%220_auth_logger_id%22%3A%2230F06532-A1B9-4B10-BB28-B29956C71AB1%22%2C%22com.facebook.sdk_client_state%22%3Atrue%2C%223_method%22%3A%22sfvc_auth%22%7D\&scope=user_birthday%2Cuser_photos%2Cuser_education_history%2Cemail%2Cuser_relationship_details%2Cuser_friends%2Cuser_work_history%2Cuser_likes\&response_type=token%2Csigned_request\&default_audience=friends\&return_scopes=true\&auth_type=rerequest\&client_id=464891386855067\&ret=login\&sdk=ios\&logger_id=30F06532-A1B9-4B10-BB28-B29956C71AB1\&ext=1470840777\&hash=AeZqkIcf-NEW6vBd")
-	FBtoken = raw_input("FBtoken: ")
+	FBtoken = get_facebook_token(FACEBOOK_USER, FACEBOOK_PASSWORD)
 	FBtokenFile = open(currentFolder + "/FBtoken.txt", "w")
 	FBtokenFile.write(FBtoken)
 	FBtokenFile.close()
 	session = pynder.Session(FBtoken)
-	pass
 
 if len(sys.argv) == 1:
 	# GET USERS
@@ -56,7 +84,7 @@ if len(sys.argv) == 1:
 			print(e)
 			pass
 	
-	# LOOK FOR MATCH CANDIDATES
+	# SEARCH MATCH CANDIDATES
 	for user in users:
 		cur.execute("SELECT count(*) FROM Users WHERE user_id = \"" + user.id + "\" GROUP BY record_time")
 		res = cur.fetchall()
@@ -122,7 +150,7 @@ elif sys.argv[1] == "-loc":
 	print(session.update_location(sys.argv[2], sys.argv[3]))
 	
 elif sys.argv[1] == "-p":
-	# GET PHOTOS
+	# SHOW USER PICTURES
 	if sys.argv[2] == "-all":
 		cur.execute("SELECT user_id, list_index FROM Users WHERE liked IS NULL ORDER BY list_index ASC")
 		tempList = cur.fetchall()
@@ -146,12 +174,11 @@ elif sys.argv[1] == "-p":
 		for i in range(len(tempList)):
 			idList.append(tempList[i][0])
 	else:
-		idList = []
-		idList.append(sys.argv[2])
+		idList = sys.argv[2:]
 	
-	photosFile = open(currentFolder + "/pics.html", "w")
-	photosFile.write("<html><body><p style=\"text-align: right; font-size: 10pt\">D: distance [km]<br>L: your previous action on the user<br>([0] disliked, [1] liked, [2] superliked, [3] match, [4] disliked after match)<br>C: database appearances count</p>\n")
-	photosFile.write("<form name=\"swipe_form\" action=\"" + PHPFolder + "/swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
+	photosFile = open(currentFolder + "/show_users.html", "w")
+	photosFile.write("<html><body><p style=\"text-align: right; font-size: 10pt\">D: distance [km]<br>L: your previous action on the user<br>([0] disliked, [1] liked, [2] superliked, [3] match)<br>C: database appearances count</p>\n")
+	photosFile.write("<form name=\"swipe_form\" action=\"" + PHP_FOLDER + "/swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
 	for id in idList:
 		try:
 			user = session._api.user_info(id)
@@ -171,7 +198,7 @@ elif sys.argv[1] == "-p":
 				label = "<font color=\"blue\">" + label + "</font>"
 			elif liked==3:
 				label = "<font color=\"red\">" + label + "</font>"
-			label = label + "<br><input type=\"radio\" name=\"" + id + "\" value=\"NULL\">NULL<input type=\"radio\" name=\"" + id + "\" value=\"0\">dislike<input type=\"radio\" name=\"" + id + "\" value=\"1\">LIKE<input type=\"radio\" name=\"" + id + "\" value=\"2\">SUPERLIKE"
+			label = label + "<br><input type=\"radio\" name=\"" + id + "\" value=\"PASS\">do nothing<input type=\"radio\" name=\"" + id + "\" value=\"DISLIKE\">dislike<input type=\"radio\" name=\"" + id + "\" value=\"LIKE\">LIKE<input type=\"radio\" name=\"" + id + "\" value=\"SUPERLIKE\">SUPERLIKE"
 			photosFile.write((label+"<br>").encode("utf8"))
 			for photo in user["results"]["photos"]:
 				photosFile.write("<a href=\"" + photo["url"] + "\"><img width=\"200\" src=\"" + photo["url"] + "\"></a>")
@@ -179,6 +206,7 @@ elif sys.argv[1] == "-p":
 		except Exception as e:
 			print(e, id)
 			pass
+	photosFile.write("<input type=\"hidden\" name=\"parent_folder\" value=\"" + currentFolder + "\"></input>\n")
 	photosFile.write("<input type=\"submit\"></input></form></body></html>")
 	photosFile.close()
-	open_browser(currentFolder + "/pics.html")
+	open_browser(currentFolder + "/show_users.html")
