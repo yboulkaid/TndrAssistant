@@ -7,7 +7,7 @@
 #
 # Host: 127.0.0.1 (MySQL 5.7.9)
 # Database: TndrAssistant
-# Generation Time: 2016-11-27 12:55:42 +0000
+# Generation Time: 2016-12-10 18:33:04 +0000
 # ************************************************************
 
 
@@ -20,20 +20,18 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 
-# Dump of table Users
+# Dump of table TndrAssistant
 # ------------------------------------------------------------
 
-DROP TABLE IF EXISTS `Users`;
+DROP TABLE IF EXISTS `TndrAssistant`;
 
-CREATE TABLE `Users` (
+CREATE TABLE `TndrAssistant` (
   `record_id` int(11) unsigned NOT NULL AUTO_INCREMENT,
   `user_id` varchar(50) NOT NULL DEFAULT '',
   `name` varchar(20) NOT NULL DEFAULT '',
   `age` int(2) NOT NULL,
   `list_index` int(2) NOT NULL,
   `ping_time_utc` timestamp NULL DEFAULT NULL,
-  `my_position_lat` float DEFAULT NULL,
-  `my_position_lon` float DEFAULT NULL,
   `distance` float NOT NULL,
   `instagram` varchar(50) DEFAULT NULL,
   `match_candidate` int(1) NOT NULL DEFAULT '0',

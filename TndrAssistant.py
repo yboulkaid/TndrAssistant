@@ -1,15 +1,24 @@
-import sys, os, pprint, pymysql, pynder, time, robobrowser, pickle, re
+import pynder
+import pymysql
+import robobrowser
+import re
+import pickle
+import argparse
+import pprint
+import time
+import random
+import sys
+import os 
 from datetime import datetime
 from tabulate import tabulate
-reload(sys)  
-sys.setdefaultencoding('utf8')
 
 from config import *
-currentFolder = os.path.dirname(os.path.realpath(sys.argv[0]))
-if not PHP_FOLDER:
-	PHP_FOLDER = currentFolder
 
-currentTimestamp = datetime.now()
+parent_folder = os.path.dirname(os.path.realpath(sys.argv[0]))
+if not PHP_FOLDER:
+	PHP_FOLDER = parent_folder
+
+current_timestamp = datetime.now()
 conn = pymysql.connect(host="127.0.0.1", port=3306, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME)
 cur = conn.cursor()
 
@@ -36,37 +45,51 @@ def get_facebook_token(email, password):
 	except IOError:
 		# FACEBOOK LOGIN
 		rb.open(FB_AUTH_URL)
-		f_login = rb.get_form()
-		f_login["pass"] = password
-		f_login["email"] = email
-		rb.submit_form(f_login)
+		login_form = rb.get_form()
+		login_form["pass"] = password
+		login_form["email"] = email
+		rb.submit_form(login_form)
 	
 	# GET TOKEN
-	f_auth = rb.get_form()
-	rb.submit_form(f_auth, submit=f_auth.submit_fields['__CONFIRM__'])
+	auth_form = rb.get_form()
+	rb.submit_form(auth_form, submit=auth_form.submit_fields['__CONFIRM__'])
 	access_token = re.search(r"access_token=([\w\d]+)", rb.response.content.decode()).groups()[0]
 		
 	return access_token
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-dl", help="Dislike users by IDs", nargs="+", metavar="ID")	
+parser.add_argument("-L", help="Like users by IDs", nargs="+", metavar="ID")
+parser.add_argument("-SL", help="Superlike users by IDs", nargs="+", metavar="ID")
+parser.add_argument("-loc", help="Change location", nargs=2, metavar=("LAT", "LON"))
+parser.add_argument("-v", help="Print user details", nargs="+", metavar="ID")
+parser.add_argument("-p", help="""Show user pictures 
+								(m: show your matches | 
+								all: show all users in DB | 
+								r [TIMESTAMP]: show users added after TIMESTAMP (MySQL format), defaults to current day | 
+								id ID [ID ...]: show users by IDs)""", nargs="+", metavar="OPTION")
+args = parser.parse_args()
 
 
 
 # OPEN SESSION
 try:
 	# READ TOKEN
-	FBtokenFile = open(currentFolder + "/FBtoken.txt", "r")
-	FBtoken = FBtokenFile.read()
-	FBtokenFile.close()
-	session = pynder.Session(FBtoken)
+	access_token_file = open(parent_folder + "/access_token.txt", "r")
+	access_token = access_token_file.read()
+	access_token_file.close()
+	session = pynder.Session(access_token)
 except Exception as e:
 	# UPDATE TOKEN
-	FBtoken = get_facebook_token(FACEBOOK_USER, FACEBOOK_PASSWORD)
-	FBtokenFile = open(currentFolder + "/FBtoken.txt", "w")
-	FBtokenFile.write(FBtoken)
-	FBtokenFile.close()
-	session = pynder.Session(FBtoken)
+	access_token = get_facebook_token(FACEBOOK_USER, FACEBOOK_PASSWORD)
+	access_token_file = open(parent_folder + "/access_token.txt", "w")
+	access_token_file.write(access_token)
+	access_token_file.close()
+	session = pynder.Session(access_token)
+
 
 if len(sys.argv) == 1:
-	# GET USERS
+	# FETCH USERS
 	users = []
 	for i in range(2):
 		users += session.nearby_users()
@@ -76,137 +99,140 @@ if len(sys.argv) == 1:
 	for user in users:
 		i += 1
 		try:
-			cur.execute("INSERT INTO Users (user_id, name, age, list_index, ping_time_utc, distance, instagram, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", (
-						user.id, user.name, user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), user.instagram_username, currentTimestamp.strftime("%Y-%m-%d %H:%M")
-						))
+			cur.execute("INSERT INTO TndrAssistant (user_id, name, age, list_index, ping_time_utc, distance, instagram, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+						(user.id, user.name.decode("utf-8"), user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), user.instagram_username, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+					   )
 			conn.commit()
 		except Exception as e:
 			print(e)
-			pass
 	
 	# SEARCH MATCH CANDIDATES
 	for user in users:
-		cur.execute("SELECT count(*) FROM Users WHERE user_id = \"" + user.id + "\" GROUP BY record_time")
+		cur.execute("SELECT count(*) FROM TndrAssistant WHERE user_id = \"" + user.id + "\" GROUP BY record_time")
 		res = cur.fetchall()
 		for count in res:
 			if count[0] > 1:
-				cur.execute("UPDATE Users SET match_candidate = 1 WHERE user_id = \"" + user.id + "\"")
+				cur.execute("UPDATE TndrAssistant SET match_candidate = 1 WHERE user_id = \"" + user.id + "\"")
 				conn.commit()
 	
 	# PRINT RESULTS
-	cur.execute("SELECT name, age, distance, match_candidate, user_id FROM Users WHERE record_time = \"" + currentTimestamp.strftime("%Y-%m-%d %H:%M") + "\"")
+	cur.execute("SELECT name, age, distance, match_candidate, user_id FROM TndrAssistant WHERE record_time = \"" + current_timestamp.strftime("%Y-%m-%d %H:%M") + "\"")
 	results = cur.fetchall()
 	print tabulate(results, headers=['Name', 'Age', 'Distance', 'Match candidate', 'ID'])
-	
-elif sys.argv[1] == "-v":
-	# USER VERBOSE
-	os.system("clear")
-	for i in range(len(sys.argv[2:])):
-		user = session._api.user_info(sys.argv[2+i])
-		pprint.pprint(user)
-	
-elif sys.argv[1] == "-L":
-	# USER LIKE
-	for i in range(len(sys.argv[2:])):
-		res = session._api.like(sys.argv[2+i])
-		if res["match"]:
-			cur.execute("UPDATE Users SET liked = 3 WHERE user_id = \"" + sys.argv[2+i] + "\"")
-			conn.commit()
-		else:
-			cur.execute("UPDATE Users SET liked = 1 WHERE user_id = \"" + sys.argv[2+i] + "\"")
-			conn.commit()
-		print(res)
-		time.sleep(1)
 
-elif sys.argv[1] == "-dl":
-	# USER DISLIKE
-	for i in range(len(sys.argv[2:])):
-		print(session._api.dislike(sys.argv[2+i]))
-		cur.execute("SELECT liked FROM Users WHERE user_id =\"" + sys.argv[2+i] + "\"")
-		liked = cur.fetchone()
-		if liked[0] == 3:
-			cur.execute("UPDATE Users SET liked = -1 WHERE user_id = \"" + sys.argv[2+i] + "\"")
-			conn.commit()
-		else:
-			cur.execute("UPDATE Users SET liked = 0 WHERE user_id = \"" + sys.argv[2+i] + "\"")
-			conn.commit()
-		time.sleep(1)
-
-elif sys.argv[1] == "-SL":
-	# USER SUPERLIKE
-	for i in range(len(sys.argv[2:])):
-		res = session._api.superlike(sys.argv[2+i])
-		if res["match"]:
-			cur.execute("UPDATE Users SET liked = 3 WHERE user_id = \""+sys.argv[2+i]+"\"")
-			conn.commit()
-		else:
-			cur.execute("UPDATE Users SET liked = 2 WHERE user_id = \""+sys.argv[2+i]+"\"")
-			conn.commit()
-		print(res)
-		time.sleep(1)
+else:
+	if args.dl:
+		# USER DISLIKE
+		for i in range(len(args.dl)):
+			print(session._api.dislike(args.dl[i]))
+			cur.execute("SELECT liked FROM TndrAssistant WHERE user_id =\"" + args.dl[i] + "\"")
+			liked = cur.fetchone()
+			if liked[0] == 3:
+				cur.execute("UPDATE TndrAssistant SET liked = -1 WHERE user_id = \"" + args.dl[i] + "\"")
+				conn.commit()
+			else:
+				cur.execute("UPDATE TndrAssistant SET liked = 0 WHERE user_id = \"" + args.dl[i] + "\"")
+				conn.commit()
+			time.sleep(random.random())
+	
+	if args.L:
+		# USER LIKE
+		for i in range(len(args.L)):
+			res = session._api.like(args.L[i])
+			if res["match"]:
+				cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + args.L[i] + "\"")
+				conn.commit()
+			else:
+				cur.execute("UPDATE TndrAssistant SET liked = 1 WHERE user_id = \"" + args.L[i] + "\"")
+				conn.commit()
+			print(res)
+			time.sleep(random.random())
+			
+	if args.SL:
+		# USER SUPERLIKE
+		for i in range(len(args.SL)):
+			res = session._api.superlike(args.SL[i])
+			if res["match"]:
+				cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + args.SL[i] + "\"")
+				conn.commit()
+			else:
+				cur.execute("UPDATE TndrAssistant SET liked = 2 WHERE user_id = \"" + args.SL[i] + "\"")
+				conn.commit()
+			print(res)
+			time.sleep(random.random())
+	
+	if args.loc:
+		# UPDATE LOCATION
+		print(session.update_location(args.loc[0], args.loc[1]))
+	
+	if args.v:
+		# USER VERBOSE
+		os.system("clear")
+		for i in range(len(args.v)):
+			user = session._api.user_info(args.v[i])
+			pprint.pprint(user)
 		
-elif sys.argv[1] == "-loc":
-	# UPDATE LOCATION
-	print(session.update_location(sys.argv[2], sys.argv[3]))
-	
-elif sys.argv[1] == "-p":
-	# SHOW USER PICTURES
-	if sys.argv[2] == "-all":
-		cur.execute("SELECT user_id, list_index FROM Users WHERE liked IS NULL ORDER BY list_index ASC")
-		tempList = cur.fetchall()
-		idList = []
-		for i in range(len(tempList)):
-			idList.append(tempList[i][0])
-	elif sys.argv[2] == "-m":
-		cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM Users WHERE match_candidate = 1 GROUP BY user_id ORDER BY rdate DESC, liked DESC")
-		tempList = cur.fetchall()
-		idList = []
-		for i in range(len(tempList)):
-			idList.append(tempList[i][0])
-	elif sys.argv[2] == "-recent":
-		if len(sys.argv)==3:
-			timestamp = currentTimestamp.strftime("%Y-%m-%d")
-		elif len(sys.argv)==4:
-			timestamp = sys.argv[3]
-		cur.execute("SELECT user_id, MIN(list_index) as ind, MAX(record_time) as rdate FROM Users WHERE record_time > \"" + timestamp + "\" AND ((liked > 0 AND liked < 4) OR liked IS NULL) GROUP BY user_id ORDER BY rdate DESC, ind ASC")
-		tempList = cur.fetchall()
-		idList = []
-		for i in range(len(tempList)):
-			idList.append(tempList[i][0])
-	else:
-		idList = sys.argv[2:]
-	
-	photosFile = open(currentFolder + "/show_users.html", "w")
-	photosFile.write("<html><body><p style=\"text-align: right; font-size: 10pt\">D: distance [km]<br>L: your previous action on the user<br>([0] disliked, [1] liked, [2] superliked, [3] match)<br>C: database appearances count</p>\n")
-	photosFile.write("<form name=\"swipe_form\" action=\"" + PHP_FOLDER + "/swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
-	for id in idList:
-		try:
-			user = session._api.user_info(id)
-			cur.execute("SELECT age, match_candidate, liked FROM Users WHERE user_id = \"" + id + "\"")
-			age, match_candidate, liked = cur.fetchone()
-			cur.execute("SELECT count(*), MAX(record_time) as rdate FROM Users WHERE user_id = \"" + id + "\" GROUP BY user_id")
-			count, last_update = cur.fetchone()
-			label = "<hr>" + user["results"]["name"] + ", " + str(age) + " - D: " + str(user["results"]["distance_mi"]*1.6) + ", L: " + str(liked) + ", C: " + str(count) + ", ID: " + user["results"]["_id"] + ", last update: " + last_update.strftime("%Y-%m-%d %H:%M:%S")
-			if "instagram" in user["results"]:
-				if user["results"]["instagram"]:
-					label = label + " - IG: <a href=\"https://www.instagram.com/" + user["results"]["instagram"]["username"] + "/\">" + user["results"]["instagram"]["username"] + "</a>"
-			if match_candidate:
-				label = "<b>" + label + "</b>"
-			if liked==0 or liked==4:
-				label = "<font color=\"grey\">" + label + "</font>"
-			elif liked==1 or liked==2:
-				label = "<font color=\"blue\">" + label + "</font>"
-			elif liked==3:
-				label = "<font color=\"red\">" + label + "</font>"
-			label = label + "<br><input type=\"radio\" name=\"" + id + "\" value=\"PASS\">do nothing<input type=\"radio\" name=\"" + id + "\" value=\"DISLIKE\">dislike<input type=\"radio\" name=\"" + id + "\" value=\"LIKE\">LIKE<input type=\"radio\" name=\"" + id + "\" value=\"SUPERLIKE\">SUPERLIKE"
-			photosFile.write((label+"<br>").encode("utf8"))
-			for photo in user["results"]["photos"]:
-				photosFile.write("<a href=\"" + photo["url"] + "\"><img width=\"200\" src=\"" + photo["url"] + "\"></a>")
-			photosFile.write("<br>"+(user["results"]["bio"]+"<p>").encode("utf8"))
-		except Exception as e:
-			print(e, id)
-			pass
-	photosFile.write("<input type=\"hidden\" name=\"parent_folder\" value=\"" + currentFolder + "\"></input>\n")
-	photosFile.write("<input type=\"submit\"></input></form></body></html>")
-	photosFile.close()
-	open_browser(currentFolder + "/show_users.html")
+	if args.p:
+		# SHOW USER PICTURES
+		if args.p[0] == "all":
+			cur.execute("SELECT user_id, list_index FROM TndrAssistant WHERE liked IS NULL ORDER BY list_index ASC")
+			temp_list = cur.fetchall()
+			id_list = []
+			for i in range(len(temp_list)):
+				id_list.append(temp_list[i][0])
+		elif args.p[0] == "m":
+			cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE match_candidate = 1 GROUP BY user_id ORDER BY rdate DESC, liked DESC")
+			temp_list = cur.fetchall()
+			id_list = []
+			for i in range(len(temp_list)):
+				id_list.append(temp_list[i][0])
+		elif args.p[0] == "r":
+			if len(args.p) == 1:
+				timestamp = current_timestamp.strftime("%Y-%m-%d")
+			else:
+				timestamp = args.p[1]
+			cur.execute("SELECT user_id, MIN(list_index) as ind, MAX(record_time) as rdate FROM TndrAssistant WHERE record_time > \"" + timestamp + "\" AND ((liked > 0 AND liked < 4) OR liked IS NULL) GROUP BY user_id ORDER BY rdate DESC, ind ASC")
+			temp_list = cur.fetchall()
+			id_list = []
+			for i in range(len(temp_list)):
+				id_list.append(temp_list[i][0])
+		elif args.p[0] == "id":
+			id_list = args.p[1:]
+		else:
+			print("Invalid OPTION value for -p argument, choose from '-m', '-recent', '-all', '-id'")
+			exit()
+		
+		webpage = open(parent_folder + "/show_users.html", "w")
+		webpage.write("<html><body><p style=\"text-align: right; font-size: 10pt\">D: distance [km]<br>L: your previous action on the user<br>([0] disliked, [1] liked, [2] superliked, [3] match)<br>C: database appearances count</p>\n")
+		webpage.write("<form name=\"swipe_form\" action=\"" + PHP_FOLDER + "/swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
+		for id in id_list:
+			try:
+				user = session._api.user_info(id)
+				cur.execute("SELECT age, match_candidate, liked FROM TndrAssistant WHERE user_id = \"" + id + "\"")
+				age, match_candidate, liked = cur.fetchone()
+				cur.execute("SELECT count(*), MAX(record_time) as rdate FROM TndrAssistant WHERE user_id = \"" + id + "\" GROUP BY user_id")
+				count, last_update = cur.fetchone()
+				label = "<hr>" + user["results"]["name"] + ", " + str(age) + " - D: " + str(user["results"]["distance_mi"]*1.6) + ", L: " + str(liked) + ", C: " + str(count) + ", ID: " + user["results"]["_id"] + ", last update: " + last_update.strftime("%Y-%m-%d %H:%M:%S")
+				if "instagram" in user["results"]:
+					if user["results"]["instagram"]:
+						label = label + " - IG: <a href=\"https://www.instagram.com/" + user["results"]["instagram"]["username"] + "/\">" + user["results"]["instagram"]["username"] + "</a>"
+				if match_candidate:
+					label = "<b>" + label + "</b>"
+				if liked==0 or liked==4:
+					label = "<font color=\"grey\">" + label + "</font>"
+				elif liked==1 or liked==2:
+					label = "<font color=\"blue\">" + label + "</font>"
+				elif liked==3:
+					label = "<font color=\"red\">" + label + "</font>"
+				label = label + "<br><input type=\"radio\" name=\"" + id + "\" value=\"PASS\">do nothing<input type=\"radio\" name=\"" + id + "\" value=\"DISLIKE\">dislike<input type=\"radio\" name=\"" + id + "\" value=\"LIKE\">LIKE<input type=\"radio\" name=\"" + id + "\" value=\"SUPERLIKE\">SUPERLIKE"
+				webpage.write((label+"<br>").encode("utf8"))
+				for photo in user["results"]["photos"]:
+					webpage.write("<a href=\"" + photo["url"] + "\"><img width=\"200\" src=\"" + photo["url"] + "\"></a>")
+				webpage.write("<br>"+(user["results"]["bio"]+"<p>").encode("utf8"))
+			except Exception as e:
+				print(e, id)
+				pass
+		webpage.write("<input type=\"hidden\" name=\"parent_folder\" value=\"" + parent_folder + "\"></input>\n")
+		webpage.write("<input type=\"submit\"></input></form></body></html>")
+		webpage.close()
+		open_browser(parent_folder + "/show_users.html")
