@@ -141,7 +141,7 @@ if n_args_not_empty==0 or args.store:
 				pass
 			elif NOTIFICATIONS_IFTTT_KEY:
 				payload = {"value1": "TA: New match found"}
-				IFTTTRes = requests.post("https://maker.ifttt.com/trigger/notification_trigger/with/key/"+NOTIFICATIONS_IFTTT_KEY, data=payload)
+				IFTTTRes = requests.post("https://maker.ifttt.com/trigger/TA_new_match/with/key/"+NOTIFICATIONS_IFTTT_KEY, data=payload)
 		else:
 			if DB_NAME:
 				cur.execute("UPDATE TndrAssistant SET match_candidate = 1, liked = 1 WHERE user_id = \"" + match_candidate_id + "\"")
