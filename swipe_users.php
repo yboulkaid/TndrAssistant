@@ -1,4 +1,4 @@
-<?
+<?php
 	$dislike = [];
 	$like = [];
 	$superlike = [];

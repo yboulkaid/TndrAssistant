@@ -1,16 +1,3 @@
-# ************************************************************
-# Sequel Pro SQL dump
-# Version 4541
-#
-# http://www.sequelpro.com/
-# https://github.com/sequelpro/sequelpro
-#
-# Host: 127.0.0.1 (MySQL 5.7.9)
-# Database: TndrAssistant
-# Generation Time: 2016-12-10 18:33:04 +0000
-# ************************************************************
-
-
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
 /*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
@@ -30,12 +17,16 @@ CREATE TABLE `TndrAssistant` (
   `user_id` varchar(50) NOT NULL DEFAULT '',
   `name` varchar(20) NOT NULL DEFAULT '',
   `age` int(2) NOT NULL,
-  `list_index` int(2) NOT NULL,
+  `list_index` int(2) DEFAULT NULL,
   `ping_time_utc` timestamp NULL DEFAULT NULL,
   `distance` float NOT NULL,
+  `my_lat` float DEFAULT NULL,
+  `my_lon` float DEFAULT NULL,
   `instagram` varchar(50) DEFAULT NULL,
-  `match_candidate` int(1) NOT NULL DEFAULT '0',
+  `match_candidate` int(1) DEFAULT NULL,
   `liked` int(1) DEFAULT NULL,
+  `content_hash` varchar(100) DEFAULT NULL,
+  `s_number` int(11) unsigned DEFAULT NULL,
   `record_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`record_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;

@@ -1,19 +1,19 @@
 # TndrAssistant
-TndrAssistant is a python script which logs details about every person which Tinder proposes you into a database, without having to "swipe left or right" on them one by one.
+TndrAssistant is a python script which can interact with your Tinder account in multiple ways. The main features are:
 
-Once these details are stored offline for subsequent analysis, the following operations are possible:
-
-- see all logged person's pictures, or a subset of them, at a glance;
-- dislike (swipe left), like (swipe right), or superlike (swipe up) one or more users whenever you want (you don't have to decide at the same moment you see him/her as in the Tinder official app);
-- based on statistics about repetitions of users' appearance in the database, it's possible to determine if a user has liked you, without having to "swipe right" on him/her.
+ - find users who already liked you, and automatically like them back to create a new match (without having to like everyone); a notification of this event can also be triggered (by means of email or [IFTTT](www.ifttt.com))
+ - store all users Tinder proposes you into a database for later interaction;
+ - see users pictures and details, either from your personal database or by directly providing a Tinder user ID;
+ - dislike ("swipe left"), like ("swipe right"), or superlike ("swipe up") users whenever you want (you don’t have to decide at the same moment you see him/her as in the Tinder official app), either from your personal database or by directly providing a Tinder user ID.
 
 ## Installation
 ### Dependencies
 - [pynder](https://github.com/charliewolf/pynder)
-- [pymysql](https://github.com/PyMySQL/PyMySQL)
+- [pymysql](https://github.com/PyMySQL/PyMySQL) (optional)
 - [tabulate](https://pypi.python.org/pypi/tabulate)
+- to completely automate the process of obtaining a Tinder access token, the modules [link]robobrowser, re and pickle are required; if, instead, an access token is provided manually following [this](https://gist.github.com/rtt/10403467#gistcomment-1846343) procedure, they are not necessary.
 
-### Database
+### Database (optional)
 You must first set up a MySQL environment. Using your favorite tool (being [phpmyadmin](https://www.phpmyadmin.net) or the command line), you must create a new database in which you can import the empty table *Users.sql* provided in this repository. Don't forget to edit the file *config.py* with your database name, username and password.
 
 ### PHP (optional)

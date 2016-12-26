@@ -1,5 +1,4 @@
 import pynder
-import pymysql
 import robobrowser
 import requests
 import re
@@ -11,7 +10,6 @@ import time
 import random
 import sys
 import os 
-from tabulate import tabulate
 from datetime import datetime
 
 from config import *
@@ -38,14 +36,22 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s\t%(message)s")
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("requests").addHandler(logging.NullHandler())
 
-current_timestamp = datetime.now()
-parent_folder = os.path.dirname(os.path.realpath(sys.argv[0]))
-if not PHP_FOLDER:
-	PHP_FOLDER = parent_folder
-
 if DB_NAME:
+	import pymysql
 	conn = pymysql.connect(host="127.0.0.1", port=3306, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME)
 	cur = conn.cursor()
+
+if NOTIFICATIONS_EMAIL:
+	import smtplib
+	server = smtplib.SMTP(SMTP_SERVER, 587)
+	server.starttls()
+	server.login(NOTIFICATIONS_EMAIL, SMTP_PASSWORD)
+
+current_timestamp = datetime.now()
+parent_folder = os.path.dirname(os.path.realpath(sys.argv[0]))
+if not WEBSERVER_FOLDER:
+	WEBSERVER_FOLDER = parent_folder
+
 
 def open_browser(url):
 	if os.name == "posix":
@@ -98,11 +104,13 @@ except Exception as e:
 	access_token_file.close()
 	session = pynder.Session(access_token)
 
+my_profile = session._api.profile()
+
 
 if n_args_not_empty==0 or args.store:
 	# FETCH NEW USERS
 	users = []
-	for i in range(2):
+	for i in range(3):
 		users += session.nearby_users()
 	
 	if args.store:
@@ -112,17 +120,14 @@ if n_args_not_empty==0 or args.store:
 			for user in users:
 				i += 1
 				try:
-					cur.execute("INSERT INTO TndrAssistant (user_id, name, age, list_index, ping_time_utc, distance, instagram, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-								(user.id, user.name.decode("utf-8"), user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), user.instagram_username, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+					user_name = session._api.user_info(user.id)["results"]["name"]
+					print((user.id, user_name, user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user.instagram_username, 0, current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+					cur.execute("INSERT INTO TndrAssistant (user_id, name, age, list_index, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+								(user.id, user_name, user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user.instagram_username, 0, user.content_hash, user.s_number, current_timestamp.strftime("%Y-%m-%d %H:%M:%S"))
 							   )
 					conn.commit()
 				except Exception as e:
 					logging.exception(e)
-		
-			# Print results
-			cur.execute("SELECT name, age, distance, match_candidate, user_id FROM TndrAssistant WHERE record_time = \"" + current_timestamp.strftime("%Y-%m-%d %H:%M") + "\"")
-			results = cur.fetchall()
-			print tabulate(results, headers=["Name", "Age", "Distance", "Match candidate", "ID"])
 		else:
 			print("Database not set.")
 			exit()
@@ -130,69 +135,163 @@ if n_args_not_empty==0 or args.store:
 	# Match candidates
 	id_list = [user.id for user in users]
 	match_candidate_id_list = list(set([id for id in id_list if id_list.count(id)>1]))
-	for match_candidate_id in match_candidate_id_list:
-		res = session._api.like(match_candidate_id)
-		logging.info(["Match candidate: " + match_candidate_id, res])
-		if res["match"]:
-			if DB_NAME:
-				cur.execute("UPDATE TndrAssistant SET match_candidate = 1, liked = 3 WHERE user_id = \"" + match_candidate_id + "\"")
-				conn.commit()
-			if NOTIFICATIONS_EMAIL:
-				pass
-			elif NOTIFICATIONS_IFTTT_KEY:
-				payload = {"value1": "TA: New match found"}
-				IFTTTRes = requests.post("https://maker.ifttt.com/trigger/TA_new_match/with/key/"+NOTIFICATIONS_IFTTT_KEY, data=payload)
+	match_candidate_hash_list = []
+	match_candidate_snumber_list = []
+	for id in match_candidate_id_list:
+		for user in users:
+			if user.id == id:
+				match_candidate_hash_list.append(user.content_hash)
+				match_candidate_snumber_list.append(user.s_number)
+	logging.debug(id_list)
+	logging.debug(match_candidate_id_list)
+	logging.debug(match_candidate_hash_list)
+	logging.debug(match_candidate_snumber_list)
+	logging.debug([id_list.count(id) for id in id_list])
+	for i in range(len(match_candidate_id_list)):
+		id = match_candidate_id_list[i]
+		content_hash = match_candidate_hash_list[i]
+		s_number = match_candidate_snumber_list[i]
+		user = session._api.user_info(id)["results"]
+		age = current_timestamp.year - int(user["birth_date"][0:4])
+		ping_time = datetime.strptime(user["ping_time"][:-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
+		if "instagram" in user:
+			instagram_username = user["instagram"]["username"] if "username" in user["instagram"] else None
 		else:
+			instagram_username = None
+		if AUTO_LIKE:
+			res = session._api.like(id, content_hash, s_number)
+			time.sleep(random.uniform(1,2))
+			logging.info("Match candidate: %s, %s, %s | %s" % (id, user["name"].decode("latin-1"), age, res))
+			if res["match"]:
+				if DB_NAME:
+					if args.store:
+						cur.execute("UPDATE TndrAssistant SET match_candidate = 1, liked = 3 WHERE user_id = %s AND record_time = %s", (id, current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+						conn.commit()
+					else:
+						cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, liked, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 3, content_hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+								   )
+						conn.commit()
+				if NOTIFICATIONS_EMAIL:
+					email_body = "MIME-Version: 1.0\nContent-type: text/html\nSubject: TndrAssistant - New match\n\n"
+					email_body += "%s, %s, %s<br>\n" % (user["name"], age, id)
+					email_body += "%s<br>\n" % (user["bio"])
+					for photo in user["photos"]:
+						email_body += "<img src=\"" + photo["url"] + "\">\n"
+					logging.debug(email_body)
+					server.sendmail(NOTIFICATIONS_EMAIL, NOTIFICATIONS_EMAIL, email_body)
+				elif NOTIFICATIONS_IFTTT_KEY:
+					payload = {"value1": "TA: New match"}
+					IFTTTRes = requests.post("https://maker.ifttt.com/trigger/TA_new_match/with/key/"+NOTIFICATIONS_IFTTT_KEY, data=payload)
+			else:
+				if DB_NAME:
+					if args.store:
+						cur.execute("UPDATE TndrAssistant SET match_candidate = 1, liked = 1 WHERE user_id = %s AND record_time = %s", (id, current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+						conn.commit()
+					else:
+						cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, liked, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 1, content_hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+								   )
+						conn.commit()
+		else:
+			logging.info("Match candidate: %s, %s, %s" % (id, user["name"].decode("latin-1"), age))
 			if DB_NAME:
-				cur.execute("UPDATE TndrAssistant SET match_candidate = 1, liked = 1 WHERE user_id = \"" + match_candidate_id + "\"")
-				conn.commit()
-		time.sleep(random.random())
+				num_rows = cur.execute("SELECT * FROM TndrAssistant WHERE user_id = \"" + id + "\" AND match_candidate = 1 AND liked IS NULL")
+				if num_rows == 0:
+					if args.store:
+						cur.execute("UPDATE TndrAssistant SET match_candidate = 1 WHERE user_id = %s AND record_time = %s", (id, current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+						conn.commit()
+					else:
+						cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, content_hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+								   )
+						conn.commit()
+					if NOTIFICATIONS_EMAIL:
+						email_body = "MIME-Version: 1.0\nContent-type: text/html\nSubject: TndrAssistant - New match candidate\n\n"
+						email_body += "%s, %s, %s<br>\n" % (user["name"], age, id)
+						email_body += "%s<br>\n" % (user["bio"])
+						for photo in user["photos"]:
+							email_body += "<img src=\"" + photo["url"] + "\">\n"
+						logging.debug(email_body)
+						server.sendmail(NOTIFICATIONS_EMAIL, NOTIFICATIONS_EMAIL, email_body)
+					elif NOTIFICATIONS_IFTTT_KEY:
+						payload = {"value1": "TA: New match candidate"}
+						IFTTTRes = requests.post("https://maker.ifttt.com/trigger/TA_new_match/with/key/"+NOTIFICATIONS_IFTTT_KEY, data=payload)
+			else:
+				if NOTIFICATIONS_EMAIL:
+					email_body = "MIME-Version: 1.0\nContent-type: text/html\nSubject: TndrAssistant - New match candidate\n\n"
+					email_body += "%s, %s, %s<br>\n" % (user["name"], age, id)
+					email_body += "%s<br>\n" % (user["bio"])
+					for photo in user["photos"]:
+						email_body += "<img src=\"" + photo["url"] + "\">\n"
+					logging.debug(email_body)
+					server.sendmail(NOTIFICATIONS_EMAIL, NOTIFICATIONS_EMAIL, email_body)
+				elif NOTIFICATIONS_IFTTT_KEY:
+					payload = {"value1": "TA: New match candidate"}
+					IFTTTRes = requests.post("https://maker.ifttt.com/trigger/TA_new_match/with/key/"+NOTIFICATIONS_IFTTT_KEY, data=payload)
 	
-	logging.info("Search completed.")
+	if NOTIFICATIONS_EMAIL:
+		server.quit()
+	logging.info("Search completed (lat: %s, lon: %s)." % (my_profile["pos"]["lat"], my_profile["pos"]["lon"]))
 
 else:
 	if args.dislike:
 		# USER DISLIKE
-		for id in args.dislike:
-			print(session._api.dislike(id))
-			if DB_NAME:
-				cur.execute("SELECT liked FROM TndrAssistant WHERE user_id =\"" + id + "\"")
-				liked = cur.fetchone()
-				if liked[0] == 3:
-					cur.execute("UPDATE TndrAssistant SET liked = -1 WHERE user_id = \"" + id + "\"")
-					conn.commit()
-				else:
-					cur.execute("UPDATE TndrAssistant SET liked = 0 WHERE user_id = \"" + id + "\"")
-					conn.commit()
-			time.sleep(random.random())
+		if DB_NAME:
+			for user_triplet in args.dislike:
+				id, hash, s_number = user_triplet.split("_")
+				print(session._api.dislike(id, hash, s_number))
+				if DB_NAME:
+					cur.execute("SELECT liked FROM TndrAssistant WHERE user_id =\"" + id + "\"")
+					liked = cur.fetchone()
+					if liked[0] == 3:
+						cur.execute("UPDATE TndrAssistant SET liked = -1 WHERE user_id = \"" + id + "\"")
+						conn.commit()
+					else:
+						cur.execute("UPDATE TndrAssistant SET liked = 0 WHERE user_id = \"" + id + "\"")
+						conn.commit()
+				time.sleep(random.uniform(1,2))
+		else:
+			print("Database not set.")
+			exit()
 	
 	if args.like:
 		# USER LIKE
-		for id in args.like:
-			res = session._api.like(id)
-			if DB_NAME:
-				if res["match"]:
-					cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
-					conn.commit()
-				else:
-					cur.execute("UPDATE TndrAssistant SET liked = 1 WHERE user_id = \"" + id + "\"")
-					conn.commit()
-			print(res)
-			time.sleep(random.random())
+		if DB_NAME:
+			for user_triplet in args.like:
+				id, hash, s_number = user_triplet.split("_")
+				res = session._api.like(id, hash, s_number)
+				if DB_NAME:
+					if res["match"]:
+						cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
+						conn.commit()
+					else:
+						cur.execute("UPDATE TndrAssistant SET liked = 1 WHERE user_id = \"" + id + "\"")
+						conn.commit()
+				print(res)
+				time.sleep(random.uniform(1,2))
+		else:
+			print("Database not set.")
+			exit()
 			
 	if args.superlike:
 		# USER SUPERLIKE
-		for id in args.superlike:
-			res = session._api.superlike(id)
-			if DB_NAME:
-				if res["match"]:
-					cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
-					conn.commit()
-				else:
-					cur.execute("UPDATE TndrAssistant SET liked = 2 WHERE user_id = \"" + id + "\"")
-					conn.commit()
-			print(res)
-			time.sleep(random.random())
+		if DB_NAME:
+			for user_triplet in args.superlike:
+				id, hash, s_number = user_triplet.split("_")
+				res = session._api.superlike(id, hash, s_number)
+				if DB_NAME:
+					if res["match"]:
+						cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
+						conn.commit()
+					else:
+						cur.execute("UPDATE TndrAssistant SET liked = 2 WHERE user_id = \"" + id + "\"")
+						conn.commit()
+				print(res)
+				time.sleep(random.uniform(1,2))
+		else:
+			print("Database not set.")
+			exit()
 	
 	if args.location:
 		# UPDATE LOCATION
@@ -200,7 +299,6 @@ else:
 	
 	if args.details:
 		# USER DETAILS
-		os.system("clear")
 		for id in args.details:
 			user = session._api.user_info(id)
 			pprint.pprint(user)
@@ -209,21 +307,19 @@ else:
 		# ADD USER
 		if DB_NAME:
 			for id in args.add:
-				user = session._api.user_info(id)
+				user = session._api.user_info(id)["results"]
 				logging.debug(pprint.pformat(user))
-				age = current_timestamp.year - int(user["results"]["birth_date"][0:4])
-				ping_time = datetime.strptime(user["results"]["ping_time"][:-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
-				if "instagram" in user["results"]:
-					cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, instagram, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-								(id, user["results"]["name"].decode("utf-8"), age, ping_time, round(user["results"]["distance_mi"]*1.6,1), user["results"]["instagram"]["username"], current_timestamp.strftime("%Y-%m-%d %H:%M"))
-							   )
-					conn.commit()
+				age = current_timestamp.year - int(user["birth_date"][0:4])
+				ping_time = datetime.strptime(user["ping_time"][:-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
+				if "instagram" in user:
+					instagram_username = user["instagram"]["username"] if "username" in user["instagram"] else None
 				else:
-					cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, record_time) VALUES (%s, %s, %s, %s, %s, %s)",
-								(id, user["results"]["name"].decode("utf-8"), age, ping_time, round(user["results"]["distance_mi"]*1.6,1), current_timestamp.strftime("%Y-%m-%d %H:%M"))
-							   )
-					conn.commit()
-				print("User %s (%s, %s) added to database." % (id, user["results"]["name"].decode("utf-8"), age))
+					instagram_username = None
+				cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, my_lat, my_lon, instagram, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+							(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6,1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+						   )
+				conn.commit()
+				print("User %s (%s, %s) added to database." % (id, user["name"], age))
 		else:
 			print("Database not set.")
 			exit()
@@ -244,9 +340,13 @@ else:
 					for i in range(len(temp_list)):
 						id_list.append(temp_list[i][0])
 				elif args.pics[0] == "m":
-					cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE match_candidate = 1 GROUP BY user_id ORDER BY rdate DESC, liked DESC")
+					cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE (match_candidate = 1 AND (liked >= 1 OR liked IS NULL)) OR liked = 3 GROUP BY user_id ORDER BY rdate DESC")
 					temp_list = cur.fetchall()
 					id_list = []
+					for i in range(len(temp_list)):
+						id_list.append(temp_list[i][0])
+					cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE match_candidate = 1 AND liked < 1 GROUP BY user_id ORDER BY rdate DESC")
+					temp_list = cur.fetchall()
 					for i in range(len(temp_list)):
 						id_list.append(temp_list[i][0])
 				elif args.pics[0] == "r":
@@ -263,29 +363,29 @@ else:
 				print("Database not set.")
 				exit()
 		
-		webpage = open(parent_folder + "/show_users.html", "w")
+		webpage = open(WEBSERVER_FOLDER + "/show_users.html", "w")
 		webpage.write("<html><body><p style=\"text-align: right; font-size: 10pt\">D: distance [km]<br>L: your previous action on the user<br>([0] disliked, [1] liked, [2] superliked, [3] match)<br>C: database appearances count</p>\n")
-		webpage.write("<form name=\"swipe_form\" action=\"" + PHP_FOLDER + "/swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
+		webpage.write("<form name=\"swipe_form\" action=\"swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
 		for id in id_list:
 			try:
-				user = session._api.user_info(id)
-				cur.execute("SELECT age, match_candidate, liked FROM TndrAssistant WHERE user_id = \"" + id + "\"")
+				user = session._api.user_info(id)["results"]
+				cur.execute("SELECT age, match_candidate, liked, content_hash, s_number, record_time FROM TndrAssistant WHERE user_id = \"" + id + "\" ORDER BY record_time DESC")
 				if cur.rowcount:
-					age, match_candidate, liked = cur.fetchone()
+					age, match_candidate, liked, content_hash, s_number, record_time = cur.fetchone()
 					cur.execute("SELECT count(*), MAX(record_time) as rdate FROM TndrAssistant WHERE user_id = \"" + id + "\" GROUP BY user_id")
 					count, last_update = cur.fetchone()
 				else:
-					age = current_timestamp.year - int(user["results"]["birth_date"][0:4])
+					age = current_timestamp.year - int(user["birth_date"][0:4])
 					match_candidate = 0
 					liked = "NULL"
 					count = 0
 					last_update = ""
 				if last_update:
 					last_update = last_update.strftime("%Y-%m-%d %H:%M:%S")
-				label = "<hr>" + user["results"]["name"] + ", " + str(age) + " - D: " + str(user["results"]["distance_mi"]*1.6) + ", L: " + str(liked) + ", C: " + str(count) + ", ID: " + user["results"]["_id"] + ", last update: " + last_update
-				if "instagram" in user["results"]:
-					if user["results"]["instagram"]:
-						label = label + " - IG: <a href=\"https://www.instagram.com/" + user["results"]["instagram"]["username"] + "/\">" + user["results"]["instagram"]["username"] + "</a>"
+				label = "<hr>" + user["name"] + ", " + str(age) + " - D: " + str(user["distance_mi"]*1.6) + ", L: " + str(liked) + ", C: " + str(count) + ", ID: " + user["_id"] + ", last update: " + last_update
+				if "instagram" in user:
+					if user["instagram"]:
+						label = label + " - IG: <a href=\"https://www.instagram.com/" + user["instagram"]["username"] + "/\">" + user["instagram"]["username"] + "</a>"
 				if match_candidate:
 					label = "<b>" + label + "</b>"
 				if liked==0 or liked==-1:
@@ -294,15 +394,21 @@ else:
 					label = "<font color=\"blue\">" + label + "</font>"
 				elif liked==3:
 					label = "<font color=\"red\">" + label + "</font>"
-				label = label + "<br><input type=\"radio\" name=\"" + id + "\" value=\"PASS\">do nothing<input type=\"radio\" name=\"" + id + "\" value=\"DISLIKE\">dislike<input type=\"radio\" name=\"" + id + "\" value=\"LIKE\">LIKE<input type=\"radio\" name=\"" + id + "\" value=\"SUPERLIKE\">SUPERLIKE"
+				if content_hash:
+					field_name = id + "_" + content_hash + "_" + str(s_number)
+				else:
+					field_name = id
+				label = label + "<br><input type=\"radio\" name=\"" + field_name + "\" value=\"PASS\">do nothing<input type=\"radio\" name=\"" + field_name + "\" value=\"DISLIKE\">dislike<input type=\"radio\" name=\"" + field_name + "\" value=\"LIKE\">LIKE<input type=\"radio\" name=\"" + field_name + "\" value=\"SUPERLIKE\">SUPERLIKE"
 				webpage.write((label+"<br>").encode("utf8"))
-				for photo in user["results"]["photos"]:
+				for photo in user["photos"]:
 					webpage.write("<a href=\"" + photo["url"] + "\"><img width=\"200\" src=\"" + photo["url"] + "\"></a>")
-				webpage.write("<br>"+(user["results"]["bio"]+"<p>").encode("utf8"))
+				webpage.write("<br>"+(user["bio"]+"<p>").encode("utf8"))
 			except Exception as e:
-				logging.exception(e)
-				logging.debug(id)
+				logging.debug("%s (id: %s)", e, id)
 		webpage.write("<input type=\"hidden\" name=\"parent_folder\" value=\"" + parent_folder + "\"></input>\n")
 		webpage.write("<input type=\"submit\"></input></form></body></html>")
 		webpage.close()
-		open_browser(parent_folder + "/show_users.html")
+		try:
+			open_browser(WEBSERVER_FOLDER + "/show_users.html")
+		except Exception as e:
+			pass
