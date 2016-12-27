@@ -4,12 +4,12 @@ import requests
 import re
 import pickle
 import argparse
-import logging
+# import logging
 import pprint
 import time
 import random
-import sys
-import os 
+# import sys
+# import os 
 from datetime import datetime
 
 from config import *
@@ -27,14 +27,17 @@ parser.add_argument("--pics", help="""Show user pictures
 								   all: show all users in DB | 
 								   r [TIMESTAMP]: show users added after TIMESTAMP (MySQL format), defaults to current day | 
 								   id ID [ID ...]: show users by IDs)""", nargs="+", metavar="OPTION")
+parser.add_argument("--debug", help="Enable debug mode", action="store_true")
+	   
 args = parser.parse_args()
 args_dict = vars(args)
 n_args_not_empty = sum(1 for arg_value in args_dict.values() if arg_value)
 
-requests.packages.urllib3.disable_warnings()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s\t%(message)s")
-logging.getLogger("requests").setLevel(logging.WARNING)
-logging.getLogger("requests").addHandler(logging.NullHandler())
+from logging_config import *
+if args.debug:
+	console_handler.setLevel(logging.DEBUG)
+else:
+	console_handler.setLevel(logging.INFO)
 
 if DB_NAME:
 	import pymysql
@@ -48,7 +51,6 @@ if NOTIFICATIONS_EMAIL:
 	server.login(NOTIFICATIONS_EMAIL, SMTP_PASSWORD)
 
 current_timestamp = datetime.now()
-parent_folder = os.path.dirname(os.path.realpath(sys.argv[0]))
 if not WEBSERVER_FOLDER:
 	WEBSERVER_FOLDER = parent_folder
 
@@ -67,7 +69,7 @@ def get_facebook_token(email, password):
 	
 	try:
 		# Read Facebook cookies
-		cookies_file = open(parent_folder + "/cookies.pckl", "rb")
+		cookies_file = open(parent_folder + "cookies.pckl", "rb")
 		cookies = pickle.load(cookies_file)
 		rb.session.cookies = cookies
 		cookies_file.close()
@@ -92,14 +94,14 @@ def get_facebook_token(email, password):
 # OPEN SESSION
 try:
 	# Read token
-	access_token_file = open(parent_folder + "/access_token.txt", "r")
+	access_token_file = open(parent_folder + "access_token.txt", "r")
 	access_token = access_token_file.read()
 	access_token_file.close()
 	session = pynder.Session(access_token)
 except Exception as e:
 	# Update token
 	access_token = get_facebook_token(FACEBOOK_USER, FACEBOOK_PASSWORD)
-	access_token_file = open(parent_folder + "/access_token.txt", "w")
+	access_token_file = open(parent_folder + "access_token.txt", "w")
 	access_token_file.write(access_token)
 	access_token_file.close()
 	session = pynder.Session(access_token)
@@ -107,7 +109,7 @@ except Exception as e:
 my_profile = session._api.profile()
 
 
-if n_args_not_empty==0 or args.store:
+if n_args_not_empty==0 or args.store or args.debug:
 	# FETCH NEW USERS
 	users = []
 	for i in range(3):
@@ -121,13 +123,13 @@ if n_args_not_empty==0 or args.store:
 				i += 1
 				try:
 					user_name = session._api.user_info(user.id)["results"]["name"]
-					print((user.id, user_name, user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user.instagram_username, 0, current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+					console_logger.debug("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s" % (user.id, user_name, user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user.instagram_username, 0, current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
 					cur.execute("INSERT INTO TndrAssistant (user_id, name, age, list_index, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
 								(user.id, user_name, user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user.instagram_username, 0, user.content_hash, user.s_number, current_timestamp.strftime("%Y-%m-%d %H:%M:%S"))
 							   )
 					conn.commit()
 				except Exception as e:
-					logging.exception(e)
+					file_logger.exception(e)
 		else:
 			print("Database not set.")
 			exit()
@@ -142,11 +144,11 @@ if n_args_not_empty==0 or args.store:
 			if user.id == id:
 				match_candidate_hash_list.append(user.content_hash)
 				match_candidate_snumber_list.append(user.s_number)
-	logging.debug(id_list)
-	logging.debug(match_candidate_id_list)
-	logging.debug(match_candidate_hash_list)
-	logging.debug(match_candidate_snumber_list)
-	logging.debug([id_list.count(id) for id in id_list])
+	console_logger.debug(id_list)
+	console_logger.debug(match_candidate_id_list)
+	console_logger.debug(match_candidate_hash_list)
+	console_logger.debug(match_candidate_snumber_list)
+	console_logger.debug([id_list.count(id) for id in id_list])
 	for i in range(len(match_candidate_id_list)):
 		id = match_candidate_id_list[i]
 		content_hash = match_candidate_hash_list[i]
@@ -161,7 +163,7 @@ if n_args_not_empty==0 or args.store:
 		if AUTO_LIKE:
 			res = session._api.like(id, content_hash, s_number)
 			time.sleep(random.uniform(1,2))
-			logging.info("Match candidate: %s, %s, %s | %s" % (id, user["name"].decode("latin-1"), age, res))
+			file_logger.info("Match candidate: %s, %s, %s | %s" % (id, user["name"].decode("latin-1"), age, res))
 			if res["match"]:
 				if DB_NAME:
 					if args.store:
@@ -178,7 +180,7 @@ if n_args_not_empty==0 or args.store:
 					email_body += "%s<br>\n" % (user["bio"])
 					for photo in user["photos"]:
 						email_body += "<img src=\"" + photo["url"] + "\">\n"
-					logging.debug(email_body)
+					console_logger.debug(email_body)
 					server.sendmail(NOTIFICATIONS_EMAIL, NOTIFICATIONS_EMAIL, email_body)
 				elif NOTIFICATIONS_IFTTT_KEY:
 					payload = {"value1": "TA: New match"}
@@ -194,7 +196,7 @@ if n_args_not_empty==0 or args.store:
 								   )
 						conn.commit()
 		else:
-			logging.info("Match candidate: %s, %s, %s" % (id, user["name"].decode("latin-1"), age))
+			file_logger.info("Match candidate: %s, %s, %s" % (id, user["name"].decode("latin-1"), age))
 			if DB_NAME:
 				num_rows = cur.execute("SELECT * FROM TndrAssistant WHERE user_id = \"" + id + "\" AND match_candidate = 1 AND liked IS NULL")
 				if num_rows == 0:
@@ -212,7 +214,7 @@ if n_args_not_empty==0 or args.store:
 						email_body += "%s<br>\n" % (user["bio"])
 						for photo in user["photos"]:
 							email_body += "<img src=\"" + photo["url"] + "\">\n"
-						logging.debug(email_body)
+						console_logger.debug(email_body)
 						server.sendmail(NOTIFICATIONS_EMAIL, NOTIFICATIONS_EMAIL, email_body)
 					elif NOTIFICATIONS_IFTTT_KEY:
 						payload = {"value1": "TA: New match candidate"}
@@ -224,7 +226,7 @@ if n_args_not_empty==0 or args.store:
 					email_body += "%s<br>\n" % (user["bio"])
 					for photo in user["photos"]:
 						email_body += "<img src=\"" + photo["url"] + "\">\n"
-					logging.debug(email_body)
+					console_logger.debug(email_body)
 					server.sendmail(NOTIFICATIONS_EMAIL, NOTIFICATIONS_EMAIL, email_body)
 				elif NOTIFICATIONS_IFTTT_KEY:
 					payload = {"value1": "TA: New match candidate"}
@@ -232,7 +234,7 @@ if n_args_not_empty==0 or args.store:
 	
 	if NOTIFICATIONS_EMAIL:
 		server.quit()
-	logging.info("Search completed (lat: %s, lon: %s)." % (my_profile["pos"]["lat"], my_profile["pos"]["lon"]))
+	file_logger.info("Search completed (lat: %s, lon: %s)." % (my_profile["pos"]["lat"], my_profile["pos"]["lon"]))
 
 else:
 	if args.dislike:
@@ -240,7 +242,8 @@ else:
 		if DB_NAME:
 			for user_triplet in args.dislike:
 				id, hash, s_number = user_triplet.split("_")
-				print(session._api.dislike(id, hash, s_number))
+				res = session._api.dislike(id, hash, s_number)
+				print(res)
 				if DB_NAME:
 					cur.execute("SELECT liked FROM TndrAssistant WHERE user_id =\"" + id + "\"")
 					liked = cur.fetchone()
@@ -261,6 +264,7 @@ else:
 			for user_triplet in args.like:
 				id, hash, s_number = user_triplet.split("_")
 				res = session._api.like(id, hash, s_number)
+				print(res)
 				if DB_NAME:
 					if res["match"]:
 						cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
@@ -268,7 +272,6 @@ else:
 					else:
 						cur.execute("UPDATE TndrAssistant SET liked = 1 WHERE user_id = \"" + id + "\"")
 						conn.commit()
-				print(res)
 				time.sleep(random.uniform(1,2))
 		else:
 			print("Database not set.")
@@ -280,6 +283,7 @@ else:
 			for user_triplet in args.superlike:
 				id, hash, s_number = user_triplet.split("_")
 				res = session._api.superlike(id, hash, s_number)
+				print(res)
 				if DB_NAME:
 					if res["match"]:
 						cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
@@ -287,7 +291,6 @@ else:
 					else:
 						cur.execute("UPDATE TndrAssistant SET liked = 2 WHERE user_id = \"" + id + "\"")
 						conn.commit()
-				print(res)
 				time.sleep(random.uniform(1,2))
 		else:
 			print("Database not set.")
@@ -295,7 +298,7 @@ else:
 	
 	if args.location:
 		# UPDATE LOCATION
-		logging.info(session.update_location(args.location[0], args.location[1]))
+		print(session.update_location(args.location[0], args.location[1]))
 	
 	if args.details:
 		# USER DETAILS
@@ -308,7 +311,7 @@ else:
 		if DB_NAME:
 			for id in args.add:
 				user = session._api.user_info(id)["results"]
-				logging.debug(pprint.pformat(user))
+				console_logger.debug(pprint.pformat(user))
 				age = current_timestamp.year - int(user["birth_date"][0:4])
 				ping_time = datetime.strptime(user["ping_time"][:-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
 				if "instagram" in user:
@@ -363,7 +366,7 @@ else:
 				print("Database not set.")
 				exit()
 		
-		webpage = open(WEBSERVER_FOLDER + "/show_users.html", "w")
+		webpage = open(WEBSERVER_FOLDER + "show_users.html", "w")
 		webpage.write("<html><body><p style=\"text-align: right; font-size: 10pt\">D: distance [km]<br>L: your previous action on the user<br>([0] disliked, [1] liked, [2] superliked, [3] match)<br>C: database appearances count</p>\n")
 		webpage.write("<form name=\"swipe_form\" action=\"swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
 		for id in id_list:
@@ -404,11 +407,11 @@ else:
 					webpage.write("<a href=\"" + photo["url"] + "\"><img width=\"200\" src=\"" + photo["url"] + "\"></a>")
 				webpage.write("<br>"+(user["bio"]+"<p>").encode("utf8"))
 			except Exception as e:
-				logging.debug("%s (id: %s)", e, id)
+				file_logger.exception("%s (id: %s)", e, id)
 		webpage.write("<input type=\"hidden\" name=\"parent_folder\" value=\"" + parent_folder + "\"></input>\n")
 		webpage.write("<input type=\"submit\"></input></form></body></html>")
 		webpage.close()
 		try:
-			open_browser(WEBSERVER_FOLDER + "/show_users.html")
+			open_browser(WEBSERVER_FOLDER + "show_users.html")
 		except Exception as e:
 			pass
