@@ -366,7 +366,7 @@ else:
 				print("Database not set.")
 				exit()
 		
-		webpage = open(WEBSERVER_FOLDER + "show_users.html", "w")
+		webpage = open(WEBSERVER_FOLDER + "index.html", "w")
 		webpage.write("<html><body><p style=\"text-align: right; font-size: 10pt\">D: distance [km]<br>L: your previous action on the user<br>([0] disliked, [1] liked, [2] superliked, [3] match)<br>C: database appearances count</p>\n")
 		webpage.write("<form name=\"swipe_form\" action=\"swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
 		for id in id_list:
@@ -412,6 +412,6 @@ else:
 		webpage.write("<input type=\"submit\"></input></form></body></html>")
 		webpage.close()
 		try:
-			open_browser(WEBSERVER_FOLDER + "show_users.html")
+			open_browser(WEBSERVER_FOLDER + "index.html")
 		except Exception as e:
 			pass
