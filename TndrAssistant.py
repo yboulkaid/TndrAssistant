@@ -4,12 +4,9 @@ import requests
 import re
 import pickle
 import argparse
-# import logging
 import pprint
 import time
 import random
-# import sys
-# import os 
 from datetime import datetime
 
 from config import *
@@ -32,6 +29,8 @@ parser.add_argument("--debug", help="Enable debug mode", action="store_true")
 args = parser.parse_args()
 args_dict = vars(args)
 n_args_not_empty = sum(1 for arg_value in args_dict.values() if arg_value)
+if args.debug:
+	n_args_not_empty -= 1
 
 from logging_config import *
 if args.debug:
@@ -109,11 +108,15 @@ except Exception as e:
 my_profile = session._api.profile()
 
 
-if n_args_not_empty==0 or args.store or args.debug:
+if n_args_not_empty==0 or args.store:
 	# FETCH NEW USERS
 	users = []
 	for i in range(3):
-		users += session.nearby_users()
+		try:
+			users += session.nearby_users()
+		except:
+			file_logger.exception(e)
+			pass
 	
 	if args.store:
 		# Save all users
@@ -343,7 +346,7 @@ else:
 					for i in range(len(temp_list)):
 						id_list.append(temp_list[i][0])
 				elif args.pics[0] == "m":
-					cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE (match_candidate = 1 AND (liked >= 1 OR liked IS NULL)) OR liked = 3 GROUP BY user_id ORDER BY rdate DESC")
+					cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE (match_candidate = 1 AND (liked >= 1 OR liked IS NULL)) GROUP BY user_id ORDER BY rdate DESC")
 					temp_list = cur.fetchall()
 					id_list = []
 					for i in range(len(temp_list)):
@@ -406,6 +409,7 @@ else:
 				for photo in user["photos"]:
 					webpage.write("<a href=\"" + photo["url"] + "\"><img width=\"200\" src=\"" + photo["url"] + "\"></a>")
 				webpage.write("<br>"+(user["bio"]+"<p>").encode("utf8"))
+				console_logger.debug("%s, %s, %s", user["name"], age, id)
 			except Exception as e:
 				file_logger.exception("%s (id: %s)", e, id)
 		webpage.write("<input type=\"hidden\" name=\"parent_folder\" value=\"" + parent_folder + "\"></input>\n")
