@@ -39,7 +39,7 @@ python TndrAssistant.py --dislike|--like|--superlike user_id1 [user_id2 ...]
 ```
 Another option you have is to look for recently logged users, which shows you all the logged profiles in the database since a certain date (if omitted, default is the current date), and you can like/dislike them at your choice.
 ```bash
-python TndrAssistant.py --pics -r 2016-11-27
+python TndrAssistant.py --pics r 2016-11-27
 ```
 You can also use:
 ```bash
