@@ -6,7 +6,7 @@ TndrAssistant is a python script which can interact with your Tinder account in 
  - see users pictures and details, either from your personal database or by directly providing a Tinder user ID;
  - dislike ("swipe left"), like ("swipe right"), or superlike ("swipe up") users whenever you want (you don’t have to decide at the same moment you see him/her as in the Tinder official app), either from your personal database or by directly providing a Tinder user ID.
 
-You could also take a look at my other project [TndrLocalizer](https://github.com/Vinz87/TndrLocalizer).
+You could also take a look at my other related project [TndrLocalizer](https://github.com/Vinz87/TndrLocalizer).
 
 ## Installation
 ### Dependencies
