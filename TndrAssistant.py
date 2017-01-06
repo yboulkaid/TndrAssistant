@@ -199,7 +199,7 @@ if n_args_not_empty==0 or args.store:
 								   )
 						conn.commit()
 		else:
-			file_logger.info("Match candidate: %s, %s, %s" % (id, user["name"].decode("latin-1"), age))
+			file_logger.info("Match candidate: %s, %s, %s" % (id, user["name"], age))
 			if DB_NAME:
 				num_rows = cur.execute("SELECT * FROM TndrAssistant WHERE user_id = \"" + id + "\" AND match_candidate = 1 AND liked IS NULL")
 				if num_rows == 0:
@@ -213,7 +213,7 @@ if n_args_not_empty==0 or args.store:
 						conn.commit()
 					if NOTIFICATIONS_EMAIL:
 						email_body = "MIME-Version: 1.0\nContent-type: text/html\nSubject: TndrAssistant - New match candidate\n\n"
-						email_body += "%s, %s, %s<br>\n" % (user["name"], age, id)
+						email_body += "%s, %s, %s<br>\n" % (user["name"].encode("utf-8").decode("latin-1"), age, id)
 						email_body += "%s<br>\n" % (user["bio"])
 						for photo in user["photos"]:
 							email_body += "<img src=\"" + photo["url"] + "\">\n"
