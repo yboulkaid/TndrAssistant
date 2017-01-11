@@ -40,7 +40,7 @@ else:
 
 if DB_NAME:
 	import pymysql
-	conn = pymysql.connect(host="127.0.0.1", port=3306, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME)
+	conn = pymysql.connect(host="127.0.0.1", port=3306, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME, charset="utf8")
 	cur = conn.cursor()
 
 if NOTIFICATIONS_EMAIL:
@@ -110,12 +110,32 @@ my_profile = session._api.profile()
 
 if n_args_not_empty==0 or args.store:
 	# FETCH NEW USERS
-	users = []
+	api_res = []
 	for i in range(3):
 		try:
-			users += session.nearby_users()
-		except:
+			api_res += session._api.recs()["results"]
+		except Exception as e:
 			file_logger.exception(e)
+			console_logger.exception(e)
+			pass
+	users = [result["user"] for result in api_res]
+	console_logger.debug("# users: %s", len(users))
+	for i in range(len(users)):
+		try:
+			users[i]["age"] = current_timestamp.year - int(users[i]["birth_date"][0:4])
+			users[i]["distance_km"] = 1.6 * users[i]["distance_mi"]
+			if "instagram" in users[i]:
+				users[i]["instagram_username"] = users[i]["instagram"]["username"] if "username" in users[i]["instagram"] else None
+			else:
+				users[i]["instagram_username"] = None
+			if not "content_hash" in users[i]:
+				users[i]["content_hash"] = None
+			if not "s_number" in users[i]:
+				users[i]["s_number"] = None
+		except Exception as e:
+			console_logger.debug(pprint.pformat(users[i]))
+			file_logger.exception(e)
+			console_logger.exception(e)
 			pass
 	
 	if args.store:
@@ -125,28 +145,29 @@ if n_args_not_empty==0 or args.store:
 			for user in users:
 				i += 1
 				try:
-					user_name = session._api.user_info(user.id)["results"]["name"]
-					console_logger.debug("%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s" % (user.id, user_name, user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user.instagram_username, 0, current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
-					cur.execute("INSERT INTO TndrAssistant (user_id, name, age, list_index, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-								(user.id, user_name, user.age, i, datetime.strptime(user.ping_time[:len(user.ping_time)-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user.distance_km,1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user.instagram_username, 0, user.content_hash, user.s_number, current_timestamp.strftime("%Y-%m-%d %H:%M:%S"))
-							   )
+					query = "INSERT INTO TndrAssistant (user_id, name, age, list_index, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+					console_logger.debug(query % (user["_id"], user["name"], user["age"], i, datetime.strptime(user["ping_time"][:len(user["ping_time"])-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user["distance_km"],1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user["instagram_username"], 0, user["content_hash"], user["s_number"], current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
+					cur.execute(query, (user["_id"], user["name"], user["age"], i, datetime.strptime(user["ping_time"][:len(user["ping_time"])-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S"), round(user["distance_km"],1), my_profile["pos"]["lat"], my_profile["pos"]["lon"], user["instagram_username"], 0, user["content_hash"], user["s_number"], current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
 					conn.commit()
 				except Exception as e:
+					file_logger.info(user["_id"])
+					file_logger.info(pprint.pformat(user))
 					file_logger.exception(e)
+					console_logger.exception(e)
 		else:
 			print("Database not set.")
 			exit()
 		
 	# Match candidates
-	id_list = [user.id for user in users]
+	id_list = [user["_id"] for user in users]
 	match_candidate_id_list = list(set([id for id in id_list if id_list.count(id)>1]))
 	match_candidate_hash_list = []
 	match_candidate_snumber_list = []
 	for id in match_candidate_id_list:
 		for user in users:
-			if user.id == id:
-				match_candidate_hash_list.append(user.content_hash)
-				match_candidate_snumber_list.append(user.s_number)
+			if user["_id"] == id:
+				match_candidate_hash_list.append(user["content_hash"])
+				match_candidate_snumber_list.append(user["s_number"])
 	console_logger.debug(id_list)
 	console_logger.debug(match_candidate_id_list)
 	console_logger.debug(match_candidate_hash_list)
@@ -158,7 +179,7 @@ if n_args_not_empty==0 or args.store:
 		s_number = match_candidate_snumber_list[i]
 		user = session._api.user_info(id)["results"]
 		age = current_timestamp.year - int(user["birth_date"][0:4])
-		ping_time = datetime.strptime(user["ping_time"][:-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
+		ping_time = user["ping_time"][:-5]
 		if "instagram" in user:
 			instagram_username = user["instagram"]["username"] if "username" in user["instagram"] else None
 		else:
@@ -178,7 +199,7 @@ if n_args_not_empty==0 or args.store:
 								   )
 						conn.commit()
 				if NOTIFICATIONS_EMAIL:
-					email_body = "MIME-Version: 1.0\nContent-type: text/html\nSubject: TndrAssistant - New match\n\n"
+					email_body = "MIME-Version: 1.0\nContent-type: text/html; charset=utf8\nSubject: TndrAssistant - New match\n\n"
 					email_body += "%s, %s, %s<br>\n" % (user["name"], age, id)
 					email_body += "%s<br>\n" % (user["bio"])
 					for photo in user["photos"]:
@@ -212,7 +233,7 @@ if n_args_not_empty==0 or args.store:
 								   )
 						conn.commit()
 					if NOTIFICATIONS_EMAIL:
-						email_body = "MIME-Version: 1.0\nContent-type: text/html\nSubject: TndrAssistant - New match candidate\n\n"
+						email_body = "MIME-Version: 1.0\nContent-type: text/html; charset=utf8\nSubject: TndrAssistant - New match candidate\n\n"
 						email_body += "%s, %s, %s<br>\n" % (user["name"].encode("utf-8").decode("latin-1"), age, id)
 						email_body += "%s<br>\n" % (user["bio"])
 						for photo in user["photos"]:
@@ -224,7 +245,7 @@ if n_args_not_empty==0 or args.store:
 						IFTTTRes = requests.post("https://maker.ifttt.com/trigger/TA_new_match/with/key/"+NOTIFICATIONS_IFTTT_KEY, data=payload)
 			else:
 				if NOTIFICATIONS_EMAIL:
-					email_body = "MIME-Version: 1.0\nContent-type: text/html\nSubject: TndrAssistant - New match candidate\n\n"
+					email_body = "MIME-Version: 1.0\nContent-type: text/html; charset=utf8\nSubject: TndrAssistant - New match candidate\n\n"
 					email_body += "%s, %s, %s<br>\n" % (user["name"], age, id)
 					email_body += "%s<br>\n" % (user["bio"])
 					for photo in user["photos"]:
@@ -412,6 +433,7 @@ else:
 				console_logger.debug("%s, %s, %s", user["name"], age, id)
 			except Exception as e:
 				file_logger.exception("%s (id: %s)", e, id)
+				console_logger.exception("%s (id: %s)", e, id)
 		webpage.write("<input type=\"hidden\" name=\"parent_folder\" value=\"" + parent_folder + "\"></input>\n")
 		webpage.write("<input type=\"submit\"></input></form></body></html>")
 		webpage.close()
