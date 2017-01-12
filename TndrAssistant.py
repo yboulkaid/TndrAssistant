@@ -113,12 +113,16 @@ if n_args_not_empty==0 or args.store:
 	api_res = []
 	for i in range(3):
 		try:
-			api_res += session._api.recs()["results"]
+			api_res += session._api.recs()
+			if "results" in api_res:
+				users = [result["user"] for result in api_res["results"]]
+			else:
+				users = [result["user"] for result in api_res]
 		except Exception as e:
+			file_logger.exception(api_res)
 			file_logger.exception(e)
 			console_logger.exception(e)
 			pass
-	users = [result["user"] for result in api_res]
 	console_logger.debug("# users: %s", len(users))
 	for i in range(len(users)):
 		try:
