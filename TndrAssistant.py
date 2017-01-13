@@ -5,6 +5,7 @@ import re
 import pickle
 import argparse
 import pprint
+import json
 import time
 import random
 from datetime import datetime
@@ -110,14 +111,21 @@ my_profile = session._api.profile()
 
 if n_args_not_empty==0 or args.store:
 	# FETCH NEW USERS
-	api_res = []
+	headers = {"Host": "api.gotinder.com", "Accept": "*/*", "app-version": "1844", "x-client-version": "69020", "Accept-Language": "it;q=1, en-US;q=0.9", "platform": "ios", "Facebook-ID": FACEBOOK_ID, "User-Agent": "Tinder/6.9.0 (iPhone; iOS 9.0.2; Scale/2.00)", "Content-Type": "application/json", "os_version": "90000000002"}
+	data = {"locale":"en", "force_refresh":"false", "facebook_token": access_token, "facebook_id": FACEBOOK_ID}
+	auth_res = requests.post("https://api.gotinder.com/auth", data=json.dumps(data), headers=headers).json()
+	auth_token = auth_res["token"]
+
+	headers = {"Host": "api.gotinder.com", "Authorization": "Token token=\"" + auth_token + "\"", "x-client-version": "69020", "app-version": "1844", "If-None-Match": "W/\"1955770092\"", "platform": "ios", "Accept-Language": "it;q=1, en-US;q=0.9", "Accept": "*/*", "User-Agent": "Tinder/6.9.0 (iPhone; iOS 9.0.2; Scale/2.00)", "X-Auth-Token": auth_token, "os_version": "90000000002"}
+	users = []
 	for i in range(3):
 		try:
-			api_res += session._api.recs()
+			api_res = requests.get("https://api.gotinder.com/recs/core?locale=it", headers=headers).json()
+			console_logger.debug("%s" % pprint.pformat(api_res))
 			if "results" in api_res:
-				users = [result["user"] for result in api_res["results"]]
+				users += [result["user"] for result in api_res["results"]]
 			else:
-				users = [result["user"] for result in api_res]
+				users += [result["user"] for result in api_res]
 		except Exception as e:
 			file_logger.exception(api_res)
 			file_logger.exception(e)
@@ -181,7 +189,7 @@ if n_args_not_empty==0 or args.store:
 		id = match_candidate_id_list[i]
 		content_hash = match_candidate_hash_list[i]
 		s_number = match_candidate_snumber_list[i]
-		user = session._api.user_info(id)["results"]
+		user = requests.get("https://api.gotinder.com/user/"+id, headers=headers).json()["results"]
 		age = current_timestamp.year - int(user["birth_date"][0:4])
 		ping_time = user["ping_time"][:-5]
 		if "instagram" in user:
