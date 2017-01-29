@@ -1,4 +1,3 @@
-import pynder
 import robobrowser
 import requests
 import re
@@ -97,47 +96,49 @@ try:
 	access_token_file = open(parent_folder + "access_token.txt", "r")
 	access_token = access_token_file.read()
 	access_token_file.close()
-	session = pynder.Session(access_token)
 except Exception as e:
 	# Update token
 	access_token = get_facebook_token(FACEBOOK_USER, FACEBOOK_PASSWORD)
 	access_token_file = open(parent_folder + "access_token.txt", "w")
 	access_token_file.write(access_token)
 	access_token_file.close()
-	session = pynder.Session(access_token)
 
-my_profile = session._api.profile()
+auth_headers = {"Host": "api.gotinder.com", "Accept": "*/*", "app-version": "1844", "x-client-version": "69020", "Accept-Language": "it;q=1, en-US;q=0.9", "platform": "ios", "Facebook-ID": FACEBOOK_ID, "User-Agent": "Tinder/6.9.0 (iPhone; iOS 9.0.2; Scale/2.00)", "Content-Type": "application/json", "os_version": "90000000002"}
+data = {"locale":"en", "force_refresh":"false", "facebook_token": access_token, "facebook_id": FACEBOOK_ID}
+auth_res = requests.post("https://api.gotinder.com/auth", data=json.dumps(data), headers=auth_headers).json()
+auth_token = auth_res["token"]
+
+headers = {"Host": "api.gotinder.com", "Authorization": "Token token=\"" + auth_token + "\"", "x-client-version": "69020", "app-version": "1844", "If-None-Match": "W/\"1955770092\"", "platform": "ios", "Accept-Language": "it;q=1, en-US;q=0.9", "Accept": "*/*", "User-Agent": "Tinder/6.9.0 (iPhone; iOS 9.0.2; Scale/2.00)", "X-Auth-Token": auth_token, "os_version": "90000000002"}
+
+my_profile = requests.get("https://api.gotinder.com/profile", headers=headers).json()
 
 
 if n_args_not_empty==0 or args.store:
 	# FETCH NEW USERS
-	headers = {"Host": "api.gotinder.com", "Accept": "*/*", "app-version": "1844", "x-client-version": "69020", "Accept-Language": "it;q=1, en-US;q=0.9", "platform": "ios", "Facebook-ID": FACEBOOK_ID, "User-Agent": "Tinder/6.9.0 (iPhone; iOS 9.0.2; Scale/2.00)", "Content-Type": "application/json", "os_version": "90000000002"}
-	data = {"locale":"en", "force_refresh":"false", "facebook_token": access_token, "facebook_id": FACEBOOK_ID}
-	auth_res = requests.post("https://api.gotinder.com/auth", data=json.dumps(data), headers=headers).json()
-	auth_token = auth_res["token"]
-
-	headers = {"Host": "api.gotinder.com", "Authorization": "Token token=\"" + auth_token + "\"", "x-client-version": "69020", "app-version": "1844", "If-None-Match": "W/\"1955770092\"", "platform": "ios", "Accept-Language": "it;q=1, en-US;q=0.9", "Accept": "*/*", "User-Agent": "Tinder/6.9.0 (iPhone; iOS 9.0.2; Scale/2.00)", "X-Auth-Token": auth_token, "os_version": "90000000002"}
 	users = []
 	for i in range(3):
 		try:
-			api_res = requests.get("https://api.gotinder.com/recs/core?locale=it", headers=headers).json()
+			api_res = requests.get("https://api.gotinder.com/recs/core", headers=headers).json()
 			console_logger.debug("%s" % pprint.pformat(api_res))
 			if "results" in api_res:
 				users += [result["user"] for result in api_res["results"]]
-			else:
-				users += [result["user"] for result in api_res]
 		except Exception as e:
 			file_logger.exception(api_res)
 			file_logger.exception(e)
-			console_logger.exception(e)
+			console_logger.info(api_res)
 			pass
-	console_logger.debug("# users: %s", len(users))
+	
+	print("Fetched users: " + str(len(users)))
+	if len(users)==0:
+		file_logger.info("Recs exhausted.")
+		exit()
+		
 	for i in range(len(users)):
 		try:
 			users[i]["age"] = current_timestamp.year - int(users[i]["birth_date"][0:4])
 			users[i]["distance_km"] = 1.6 * users[i]["distance_mi"]
 			if "instagram" in users[i]:
-				users[i]["instagram_username"] = users[i]["instagram"]["username"] if "username" in users[i]["instagram"] else None
+				users[i]["instagram_username"] = None if not users[i]["instagram"] else users[i]["instagram"]["username"]
 			else:
 				users[i]["instagram_username"] = None
 			if not "content_hash" in users[i]:
@@ -168,7 +169,7 @@ if n_args_not_empty==0 or args.store:
 					console_logger.exception(e)
 		else:
 			print("Database not set.")
-			exit()
+			pass
 		
 	# Match candidates
 	id_list = [user["_id"] for user in users]
@@ -180,6 +181,8 @@ if n_args_not_empty==0 or args.store:
 			if user["_id"] == id:
 				match_candidate_hash_list.append(user["content_hash"])
 				match_candidate_snumber_list.append(user["s_number"])
+				break
+	print("Match candidates: " + str(len(match_candidate_id_list)))
 	console_logger.debug(id_list)
 	console_logger.debug(match_candidate_id_list)
 	console_logger.debug(match_candidate_hash_list)
@@ -275,78 +278,68 @@ if n_args_not_empty==0 or args.store:
 else:
 	if args.dislike:
 		# USER DISLIKE
-		if DB_NAME:
-			for user_triplet in args.dislike:
-				id, hash, s_number = user_triplet.split("_")
-				res = session._api.dislike(id, hash, s_number)
-				print(res)
-				if DB_NAME:
-					cur.execute("SELECT liked FROM TndrAssistant WHERE user_id =\"" + id + "\"")
-					liked = cur.fetchone()
-					if liked[0] == 3:
-						cur.execute("UPDATE TndrAssistant SET liked = -1 WHERE user_id = \"" + id + "\"")
-						conn.commit()
-					else:
-						cur.execute("UPDATE TndrAssistant SET liked = 0 WHERE user_id = \"" + id + "\"")
-						conn.commit()
-				time.sleep(random.uniform(1,2))
-		else:
-			print("Database not set.")
-			exit()
+		for user_triplet in args.dislike:
+			id, hash, s_number = user_triplet.split("_")
+			api_res = requests.get("https://api.gotinder.com/pass/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, hash, s_number), headers=headers).json()
+			print(api_res)
+			if DB_NAME:
+				cur.execute("SELECT liked FROM TndrAssistant WHERE user_id =\"" + id + "\"")
+				liked = cur.fetchone()
+				if liked[0] == 3:
+					cur.execute("UPDATE TndrAssistant SET liked = -1 WHERE user_id = \"" + id + "\"")
+					conn.commit()
+				else:
+					cur.execute("UPDATE TndrAssistant SET liked = 0 WHERE user_id = \"" + id + "\"")
+					conn.commit()
+			time.sleep(random.uniform(1,2))
 	
 	if args.like:
 		# USER LIKE
-		if DB_NAME:
-			for user_triplet in args.like:
-				id, hash, s_number = user_triplet.split("_")
-				res = session._api.like(id, hash, s_number)
-				print(res)
-				if DB_NAME:
-					if res["match"]:
-						cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
-						conn.commit()
-					else:
-						cur.execute("UPDATE TndrAssistant SET liked = 1 WHERE user_id = \"" + id + "\"")
-						conn.commit()
-				time.sleep(random.uniform(1,2))
-		else:
-			print("Database not set.")
-			exit()
+		for user_triplet in args.like:
+			id, hash, s_number = user_triplet.split("_")
+			api_res = requests.get("https://api.gotinder.com/like/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, hash, s_number), headers=headers).json()
+			print(api_res)
+			if DB_NAME:
+				if api_res["match"]:
+					cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
+					conn.commit()
+				else:
+					cur.execute("UPDATE TndrAssistant SET liked = 1 WHERE user_id = \"" + id + "\"")
+					conn.commit()
+			time.sleep(random.uniform(1,2))
 			
 	if args.superlike:
 		# USER SUPERLIKE
-		if DB_NAME:
-			for user_triplet in args.superlike:
-				id, hash, s_number = user_triplet.split("_")
-				res = session._api.superlike(id, hash, s_number)
-				print(res)
-				if DB_NAME:
-					if res["match"]:
-						cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
-						conn.commit()
-					else:
-						cur.execute("UPDATE TndrAssistant SET liked = 2 WHERE user_id = \"" + id + "\"")
-						conn.commit()
-				time.sleep(random.uniform(1,2))
-		else:
-			print("Database not set.")
-			exit()
+		for user_triplet in args.superlike:
+			id, hash, s_number = user_triplet.split("_")
+			api_res = requests.post("https://api.gotinder.com/like/" + id + "/super", data=json.dumps({"content_hash": hash, "s_number": s_number}), headers=headers).json()
+			print(api_res)
+			file_logger.info(api_res)
+			if DB_NAME:
+				if api_res["match"]:
+					cur.execute("UPDATE TndrAssistant SET liked = 3 WHERE user_id = \"" + id + "\"")
+					conn.commit()
+				else:
+					cur.execute("UPDATE TndrAssistant SET liked = 2 WHERE user_id = \"" + id + "\"")
+					conn.commit()
+			time.sleep(random.uniform(1,2))
 	
 	if args.location:
 		# UPDATE LOCATION
-		print(session.update_location(args.location[0], args.location[1]))
+		api_res = requests.post("https://api.gotinder.com/user/ping", data={"lat": args.location[0], "lon": args.location[1]}, headers=headers).json()
+		print(api_res)
 	
 	if args.details:
 		# USER DETAILS
 		for id in args.details:
-			user = session._api.user_info(id)
+			user = requests.get("https://api.gotinder.com/user/"+id, headers=headers).json()["results"]
 			pprint.pprint(user)
 	
 	if args.add:
 		# ADD USER
 		if DB_NAME:
 			for id in args.add:
-				user = session._api.user_info(id)["results"]
+				user = requests.get("https://api.gotinder.com/user/"+id, headers=headers).json()["results"]
 				console_logger.debug(pprint.pformat(user))
 				age = current_timestamp.year - int(user["birth_date"][0:4])
 				ping_time = datetime.strptime(user["ping_time"][:-5],"%Y-%m-%dT%H:%M:%S").strftime("%Y-%m-%d %H:%M:%S")
@@ -384,10 +377,6 @@ else:
 					id_list = []
 					for i in range(len(temp_list)):
 						id_list.append(temp_list[i][0])
-					cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE match_candidate = 1 AND liked < 1 GROUP BY user_id ORDER BY rdate DESC")
-					temp_list = cur.fetchall()
-					for i in range(len(temp_list)):
-						id_list.append(temp_list[i][0])
 				elif args.pics[0] == "r":
 					if len(args.pics) == 1:
 						timestamp = current_timestamp.strftime("%Y-%m-%d")
@@ -407,7 +396,7 @@ else:
 		webpage.write("<form name=\"swipe_form\" action=\"swipe_users.php\" method=\"post\"><input type=\"submit\"></input>\n")
 		for id in id_list:
 			try:
-				user = session._api.user_info(id)["results"]
+				user = requests.get("https://api.gotinder.com/user/"+id, headers=headers).json()["results"]
 				cur.execute("SELECT age, match_candidate, liked, content_hash, s_number, record_time FROM TndrAssistant WHERE user_id = \"" + id + "\" ORDER BY record_time DESC")
 				if cur.rowcount:
 					age, match_candidate, liked, content_hash, s_number, record_time = cur.fetchone()
@@ -436,7 +425,7 @@ else:
 				if content_hash:
 					field_name = id + "_" + content_hash + "_" + str(s_number)
 				else:
-					field_name = id
+					field_name = id + "__"
 				label = label + "<br><input type=\"radio\" name=\"" + field_name + "\" value=\"PASS\">do nothing<input type=\"radio\" name=\"" + field_name + "\" value=\"DISLIKE\">dislike<input type=\"radio\" name=\"" + field_name + "\" value=\"LIKE\">LIKE<input type=\"radio\" name=\"" + field_name + "\" value=\"SUPERLIKE\">SUPERLIKE"
 				webpage.write((label+"<br>").encode("utf8"))
 				for photo in user["photos"]:

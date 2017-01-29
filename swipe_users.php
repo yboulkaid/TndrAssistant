@@ -9,17 +9,17 @@
 		elseif ($value == "SUPERLIKE") $superlike[] = $id;
 	}
 	
-	echo "python $_POST[parent_folder]/TndrAssistant.py --dislike";
+	echo "python $_POST[parent_folder]TndrAssistant.py --dislike";
 	foreach ($dislike as $id) {
 		echo " ".$id;
 	}
 	
-	echo "<p>python $_POST[parent_folder]/TndrAssistant.py --like";
+	echo "<p>python $_POST[parent_folder]TndrAssistant.py --like";
 	foreach ($like as $id) {
 		echo " ".$id;
 	}
 	
-	echo "<p>python $_POST[parent_folder]/TndrAssistant.py --superlike";
+	echo "<p>python $_POST[parent_folder]TndrAssistant.py --superlike";
 	foreach ($superlike as $id) {
 		echo " ".$id;
 	}

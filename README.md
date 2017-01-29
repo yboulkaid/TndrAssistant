@@ -9,9 +9,8 @@ TndrAssistant is a python script which can interact with your Tinder account in 
 You could also take a look at my other related project [TndrLocalizer](https://github.com/Vinz87/TndrLocalizer).
 
 ## Installation
-### Dependencies
-- [my fork](https://github.com/charliewolf/pynder) of [pynder](https://github.com/charliewolf/pynder)
-- [pymysql](https://github.com/PyMySQL/PyMySQL) (optional)
+### Optional Dependencies
+- [pymysql](https://github.com/PyMySQL/PyMySQL)
 - to completely automate the process of obtaining a Tinder access token, the modules [robobrowser](https://github.com/jmcarp/robobrowser), [re](https://docs.python.org/2/library/re.html) and [pickle](https://docs.python.org/2/library/pickle.html) are required; if, instead, an access token is provided manually following [this](https://gist.github.com/rtt/10403467#gistcomment-1846343) procedure, they are not necessary.
 
 ### Database (optional)
