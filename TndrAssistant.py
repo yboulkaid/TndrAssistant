@@ -7,7 +7,7 @@ import pprint
 import json
 import time
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from config import *
 
@@ -372,7 +372,7 @@ else:
 					for i in range(len(temp_list)):
 						id_list.append(temp_list[i][0])
 				elif args.pics[0] == "m":
-					cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE (match_candidate = 1 AND (liked >= 1 OR liked IS NULL)) GROUP BY user_id ORDER BY rdate DESC")
+					cur.execute("SELECT user_id, MAX(record_time) as rdate, MAX(liked) as liked FROM TndrAssistant WHERE liked = 3 OR (match_candidate = 1 AND (liked >= 1 OR liked IS NULL) AND record_time > \"" + (current_timestamp-timedelta(days=15)).strftime("%Y-%m-%d %H:%M") + "\") GROUP BY user_id ORDER BY rdate DESC")
 					temp_list = cur.fetchall()
 					id_list = []
 					for i in range(len(temp_list)):
