@@ -190,7 +190,7 @@ if n_args_not_empty==0 or args.store:
 	console_logger.debug([id_list.count(id) for id in id_list])
 	for i in range(len(match_candidate_id_list)):
 		id = match_candidate_id_list[i]
-		content_hash = match_candidate_hash_list[i]
+		hash = match_candidate_hash_list[i]
 		s_number = match_candidate_snumber_list[i]
 		user = requests.get("https://api.gotinder.com/user/"+id, headers=headers).json()["results"]
 		age = current_timestamp.year - int(user["birth_date"][0:4])
@@ -200,17 +200,17 @@ if n_args_not_empty==0 or args.store:
 		else:
 			instagram_username = None
 		if AUTO_LIKE:
-			res = session._api.like(id, content_hash, s_number)
+			api_res = requests.get("https://api.gotinder.com/like/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, hash, s_number), headers=headers).json()
 			time.sleep(random.uniform(1,2))
-			file_logger.info("Match candidate: %s, %s, %s | %s" % (id, user["name"].decode("latin-1"), age, res))
-			if res["match"]:
+			file_logger.info("Match candidate: %s, %s, %s | %s" % (id, user["name"].decode("latin-1"), age, api_res))
+			if api_res["match"]:
 				if DB_NAME:
 					if args.store:
 						cur.execute("UPDATE TndrAssistant SET match_candidate = 1, liked = 3 WHERE user_id = %s AND record_time = %s", (id, current_timestamp.strftime("%Y-%m-%d %H:%M:%S")))
 						conn.commit()
 					else:
 						cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, liked, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 3, content_hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 3, hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
 								   )
 						conn.commit()
 				if NOTIFICATIONS_EMAIL:
@@ -231,7 +231,7 @@ if n_args_not_empty==0 or args.store:
 						conn.commit()
 					else:
 						cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, liked, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 1, content_hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 1, hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
 								   )
 						conn.commit()
 		else:
