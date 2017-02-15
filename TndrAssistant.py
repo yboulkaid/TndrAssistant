@@ -39,15 +39,25 @@ else:
 	console_handler.setLevel(logging.INFO)
 
 if DB_NAME:
-	import pymysql
-	conn = pymysql.connect(host="127.0.0.1", port=3306, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME, charset="utf8")
-	cur = conn.cursor()
+	try:
+		import pymysql
+		conn = pymysql.connect(host="127.0.0.1", port=3306, user=DB_USER, passwd=DB_PASSWORD, db=DB_NAME, charset="utf8")
+		cur = conn.cursor()
+	except Exception as e:
+		console_logger.exception(e)
+		file_logger.exception(e)
+		exit()
 
 if NOTIFICATIONS_EMAIL:
-	import smtplib
-	server = smtplib.SMTP(SMTP_SERVER, 587)
-	server.starttls()
-	server.login(NOTIFICATIONS_EMAIL, SMTP_PASSWORD)
+	try:
+		import smtplib
+		server = smtplib.SMTP(SMTP_SERVER, 587)
+		server.starttls()
+		server.login(NOTIFICATIONS_EMAIL, SMTP_PASSWORD)
+	except Exception as e:
+		print("Can't connect to SMTP server.")
+		file_logger.exception(e)
+		exit()
 
 current_timestamp = datetime.now()
 if not WEBSERVER_FOLDER:
@@ -190,7 +200,7 @@ if n_args_not_empty==0 or args.store:
 	console_logger.debug([id_list.count(id) for id in id_list])
 	for i in range(len(match_candidate_id_list)):
 		id = match_candidate_id_list[i]
-		hash = match_candidate_hash_list[i]
+		content_hash = match_candidate_hash_list[i]
 		s_number = match_candidate_snumber_list[i]
 		user = requests.get("https://api.gotinder.com/user/"+id, headers=headers).json()["results"]
 		age = current_timestamp.year - int(user["birth_date"][0:4])
@@ -200,7 +210,7 @@ if n_args_not_empty==0 or args.store:
 		else:
 			instagram_username = None
 		if AUTO_LIKE:
-			api_res = requests.get("https://api.gotinder.com/like/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, hash, s_number), headers=headers).json()
+			api_res = requests.get("https://api.gotinder.com/like/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, content_hash, s_number), headers=headers).json()
 			time.sleep(random.uniform(1,2))
 			file_logger.info("Match candidate: %s, %s, %s | %s" % (id, user["name"].decode("latin-1"), age, api_res))
 			if api_res["match"]:
@@ -210,7 +220,7 @@ if n_args_not_empty==0 or args.store:
 						conn.commit()
 					else:
 						cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, liked, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 3, hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 3, content_hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
 								   )
 						conn.commit()
 				if NOTIFICATIONS_EMAIL:
@@ -231,7 +241,7 @@ if n_args_not_empty==0 or args.store:
 						conn.commit()
 					else:
 						cur.execute("INSERT INTO TndrAssistant (user_id, name, age, ping_time_utc, distance, my_lat, my_lon, instagram, match_candidate, liked, content_hash, s_number, record_time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 1, hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
+									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 1, content_hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
 								   )
 						conn.commit()
 		else:
@@ -279,8 +289,8 @@ else:
 	if args.dislike:
 		# USER DISLIKE
 		for user_triplet in args.dislike:
-			id, hash, s_number = user_triplet.split("_")
-			api_res = requests.get("https://api.gotinder.com/pass/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, hash, s_number), headers=headers).json()
+			id, content_hash, s_number = user_triplet.split("_")
+			api_res = requests.get("https://api.gotinder.com/pass/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, content_hash, s_number), headers=headers).json()
 			print(api_res)
 			if DB_NAME:
 				cur.execute("SELECT liked FROM TndrAssistant WHERE user_id =\"" + id + "\"")
@@ -296,8 +306,8 @@ else:
 	if args.like:
 		# USER LIKE
 		for user_triplet in args.like:
-			id, hash, s_number = user_triplet.split("_")
-			api_res = requests.get("https://api.gotinder.com/like/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, hash, s_number), headers=headers).json()
+			id, content_hash, s_number = user_triplet.split("_")
+			api_res = requests.get("https://api.gotinder.com/like/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, content_hash, s_number), headers=headers).json()
 			print(api_res)
 			if DB_NAME:
 				if api_res["match"]:
@@ -311,8 +321,8 @@ else:
 	if args.superlike:
 		# USER SUPERLIKE
 		for user_triplet in args.superlike:
-			id, hash, s_number = user_triplet.split("_")
-			api_res = requests.post("https://api.gotinder.com/like/" + id + "/super", data=json.dumps({"content_hash": hash, "s_number": s_number}), headers=headers).json()
+			id, content_hash, s_number = user_triplet.split("_")
+			api_res = requests.post("https://api.gotinder.com/like/" + id + "/super", data=json.dumps({"content_hash": content_hash, "s_number": s_number}), headers=headers).json()
 			print(api_res)
 			file_logger.info(api_res)
 			if DB_NAME:
