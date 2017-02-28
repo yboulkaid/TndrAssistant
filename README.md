@@ -1,4 +1,32 @@
 # TndrAssistant
+
+## About this fork
+
+### Major changes
+This is a fork of [Vinz87/TndrAssistant](https://github.com/Vinz87/TndrAssistant), which mainly consists of:
+- Small changes I had to make to make it _work on my machine_ (Python 3.5.2)
+- A ruby wrapper around it to communicate with the database and automate swiping of unliked people
+
+Thanks to Vinz87 for doing the bulk of the work on this :)
+
+### Removed features
+Some features were removed to minimize errors
+- Notifications via email/IFTTT
+
+### New features
+- there is now a `--meta` command to interact with Tinder's meta endpoint
+- the ruby wrapper, documentation coming soon...
+
+**Note about input formatting to the like/dislike commands:** The original documentation (cf. below) says the format is
+
+```bash
+python TndrAssistant.py --dislike|--like|--superlike user_id1 [user_id2 ...]
+```
+
+What is meant by `user_id1` here is the string `[user_id]_[content_hash]_[s_sumber]`
+
+## Original project's documentation
+
 TndrAssistant is a python script which can interact with your Tinder account in multiple ways. The main features are:
 
  - find users who already liked you, and automatically like them back to create a new match (without having to like everyone); a notification of this event can also be triggered (by means of email or [IFTTT](www.ifttt.com))
