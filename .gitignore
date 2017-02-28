@@ -2,6 +2,9 @@
 *.html
 *.pyc
 *.pckl
+.bundle
+.python-version
+.ruby-version
 config.py
 test
 logs
