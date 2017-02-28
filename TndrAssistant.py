@@ -202,6 +202,9 @@ if n_args_not_empty==0 or args.store:
 		id = match_candidate_id_list[i]
 		content_hash = match_candidate_hash_list[i]
 		s_number = match_candidate_snumber_list[i]
+		print(id)
+		print(content_hash)
+		print(s_number)
 		user = requests.get("https://api.gotinder.com/user/"+id, headers=headers).json()["results"]
 		age = current_timestamp.year - int(user["birth_date"][0:4])
 		ping_time = user["ping_time"][:-5]
@@ -212,7 +215,7 @@ if n_args_not_empty==0 or args.store:
 		if AUTO_LIKE:
 			api_res = requests.get("https://api.gotinder.com/like/%s?content_hash=\"%s\"&s_number=\"%s\"" % (id, content_hash, s_number), headers=headers).json()
 			time.sleep(random.uniform(1,2))
-			file_logger.info("Match candidate: %s, %s, %s | %s" % (id, user["name"].decode("latin-1"), age, api_res))
+			file_logger.info("Match candidate: %s, %s, %s | %s" % (id, user["name"], age, api_res))
 			if api_res["match"]:
 				if DB_NAME:
 					if args.store:
