@@ -19,6 +19,7 @@ parser.add_argument("--superlike", help="Superlike users by IDs", nargs="+", met
 parser.add_argument("--location", help="Change location", nargs=2, metavar=("LAT", "LON"))
 parser.add_argument("--details", help="Print user details", nargs="+", metavar="ID")
 parser.add_argument("--add", help="Add user to database by IDs", nargs="+", metavar="ID")
+parser.add_argument("--meta", help="Show meta information", action="store_true")
 parser.add_argument("--pics", help="""Show user pictures 
 								   (m: show your matches | 
 								   all: show all users in DB | 
@@ -369,6 +370,11 @@ else:
 			print("Database not set.")
 			exit()
 		
+	if args.meta:
+            data = {"last_activity_date": ""}
+            meta_info = requests.post("https://api.gotinder.com/updates", data=json.dumps(data), headers=headers).json()
+            # meta_info = requests.get("https://api.gotinder.com/meta", headers=headers).json()
+            print(meta_info)
 	if args.pics:
 		# SHOW USER PICTURES
 		if args.pics[0]!="id" and args.pics[0]!="all" and args.pics[0]!="m" and args.pics[0]!="r":
