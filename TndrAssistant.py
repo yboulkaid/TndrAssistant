@@ -437,10 +437,10 @@ else:
 				else:
 					field_name = id + "__"
 				label = label + "<br><input type=\"radio\" name=\"" + field_name + "\" value=\"PASS\">do nothing<input type=\"radio\" name=\"" + field_name + "\" value=\"DISLIKE\">dislike<input type=\"radio\" name=\"" + field_name + "\" value=\"LIKE\">LIKE<input type=\"radio\" name=\"" + field_name + "\" value=\"SUPERLIKE\">SUPERLIKE"
-				webpage.write((label+"<br>").encode("utf8"))
+				webpage.write((label+"<br>"))
 				for photo in user["photos"]:
 					webpage.write("<a href=\"" + photo["url"] + "\"><img width=\"200\" src=\"" + photo["url"] + "\"></a>")
-				webpage.write("<br>"+(user["bio"]+"<p>").encode("utf8"))
+				webpage.write("<br>"+(user["bio"]+"<p>"))
 				console_logger.debug("%s, %s, %s", user["name"], age, id)
 			except Exception as e:
 				file_logger.exception("%s (id: %s)", e, id)
