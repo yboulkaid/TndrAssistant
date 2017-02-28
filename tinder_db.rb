@@ -1,8 +1,23 @@
 require 'sequel'
 require 'virtus'
+require 'logging'
 
 DB = Sequel.connect('mysql://root:@127.0.0.1/tndr_assistant')
-DB[:TndrAssistant]
+
+class Logger
+  def initialize
+    @logger = Logging.logger(STDOUT)
+    @logger.level = :info
+  end
+
+  def self.info(*args)
+    new.info(*args)
+  end
+
+  def info(*args)
+    @logger.info(*args)
+  end
+end
 
 class User
   include Virtus.model
@@ -21,8 +36,8 @@ class User
   end
 
   def self.fetch!
-    3.times do
-      puts `python TndrAssistant.py --store`
+    1.times do
+      Logger.info `python TndrAssistant.py --store`
     end
   end
 
@@ -36,7 +51,7 @@ class User
   end
 
   def like!
-    puts "Liking user #{user_id} with like_key #{like_key}"
+    Logger.info "Liking user #{user_id} with like_key #{like_key}"
     `python TndrAssistant.py --like #{like_key}`
   end
 
@@ -47,8 +62,8 @@ end
 
 class Stats
   def self.print
-    puts "Liked users in db: #{User.liked.count} \n"
-    puts "Not liked users in db: #{User.not_liked.count} \n"
+    Logger.info "Liked users in db: #{User.liked.count}"
+    Logger.info "Not liked users in db: #{User.not_liked.count}"
   end
 
 end
