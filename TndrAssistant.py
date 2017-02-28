@@ -227,17 +227,6 @@ if n_args_not_empty==0 or args.store:
 									(id, user["name"], age, ping_time, round(user["distance_mi"]*1.6), my_profile["pos"]["lat"], my_profile["pos"]["lon"], instagram_username, 1, 3, content_hash, s_number, current_timestamp.strftime("%Y-%m-%d %H:%M"))
 								   )
 						conn.commit()
-				if NOTIFICATIONS_EMAIL:
-					email_body = "MIME-Version: 1.0\nContent-type: text/html; charset=utf8\nSubject: TndrAssistant - New match\n\n"
-					email_body += "%s, %s, %s<br>\n" % (user["name"], age, id)
-					email_body += "%s<br>\n" % (user["bio"])
-					for photo in user["photos"]:
-						email_body += "<img src=\"" + photo["url"] + "\">\n"
-					console_logger.debug(email_body)
-					server.sendmail(NOTIFICATIONS_EMAIL, NOTIFICATIONS_EMAIL, email_body)
-				elif NOTIFICATIONS_IFTTT_KEY:
-					payload = {"value1": "TA: New match"}
-					IFTTTRes = requests.post("https://maker.ifttt.com/trigger/TA_new_match/with/key/"+NOTIFICATIONS_IFTTT_KEY, data=payload)
 			else:
 				if DB_NAME:
 					if args.store:
